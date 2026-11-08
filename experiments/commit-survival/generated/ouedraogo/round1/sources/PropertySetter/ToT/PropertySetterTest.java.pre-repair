@@ -1,0 +1,447 @@
+package ch.qos.logback.core.joran.util;
+
+import ch.qos.logback.core.joran.spi.DefaultClass;
+import ch.qos.logback.core.joran.spi.DefaultNestedComponentRegistry;
+import ch.qos.logback.core.util.AggregationType;
+import ch.qos.logback.core.util.PropertySetterException;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.Assert.*;
+
+/**
+ * Comprehensive JUnit‑4 test suite for {@link PropertySetter}.
+ * <p>
+ * The tests use real beans (no mocks) and a small subclass of {@link PropertySetter}
+ * that records warnings and errors emitted via {@code addWarn}/{@code addError}.
+ */
+public class PropertySetterTest {
+
+    /* --------------------------------------------------------------------- */
+    /* Helper classes used as test subjects                                   */
+    /* --------------------------------------------------------------------- */
+
+    /** Simple bean with primitive‑type setters. */
+    public static class SimpleBean {
+        private String name;
+        private int age;
+        private boolean male;
+
+        public void setName(String name) { this.name = name; }
+        public String getName() { return name; }
+
+        public void setAge(int age) { this.age = age; }
+        public int getAge() { return age; }
+
+        public void setMale(boolean male) { this.male = male; }
+        public boolean isMale() { return male; }
+    }
+
+    /** Bean that supports collection‑style “adder” methods. */
+    public static class CollectionBean {
+        private final List<String> items = new ArrayList<>();
+
+        public void addItem(String item) { items.add(item); }
+        public List<String> getItems() { return items; }
+    }
+
+    /** Complex component used for complex‑property tests. */
+    public static class ComplexComponent {
+        private String value;
+        public ComplexComponent() {}
+        public ComplexComponent(String v) { this.value = v; }
+        public String getValue() { return value; }
+        public void setValue(String v) { this.value = v; }
+    }
+
+    /** Bean that has a complex setter annotated with {@link DefaultClass}. */
+    public static class AnnotatedBean {
+        private ComplexComponent component;
+
+        @DefaultClass(ComplexComponent.class)
+        public void setComponent(ComplexComponent comp) { this.component = comp; }
+        public ComplexComponent getComponent() { return component; }
+    }
+
+    /** Bean that mixes basic and complex properties and also provides a setter
+     *  whose parameter type is an interface (non‑instantiable). */
+    public interface Service {}
+    public static class ServiceImpl implements Service {}
+    public static class MixedBean {
+        private String title;
+        private ComplexComponent complex;
+        private Service service;
+
+        public void setTitle(String title) { this.title = title; }
+        public String getTitle() { return title; }
+
+        public void setComplex(ComplexComponent complex) { this.complex = complex; }
+        public ComplexComponent getComplex() { return complex; }
+
+        public void setService(Service service) { this.service = service; }
+        public Service getService() { return service; }
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* Testable subclass that records warnings / errors                        */
+    /* --------------------------------------------------------------------- */
+    private static class TestablePropertySetter extends PropertySetter {
+        final List<String> warnings = new ArrayList<>();
+        final List<String> errors   = new ArrayList<>();
+
+        TestablePropertySetter(BeanDescriptionCache cache, Object obj) {
+            super(cache, obj);
+        }
+
+        @Override
+        public void addWarn(String msg) {
+            warnings.add(msg);
+        }
+
+        @Override
+        public void addWarn(String msg, Throwable t) {
+            warnings.add(msg + " : " + t.getMessage());
+        }
+
+        @Override
+        public void addError(String msg) {
+            errors.add(msg);
+        }
+
+        @Override
+        public void addError(String msg, Throwable t) {
+            errors.add(msg + " : " + t.getMessage());
+        }
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* Common fixtures                                                       */
+    /* --------------------------------------------------------------------- */
+    private BeanDescriptionCache cache;
+
+    @Before
+    public void setUp() {
+        // Context is not needed for the current tests – passing null is acceptable.
+        cache = new BeanDescriptionCache(null);
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 1. setProperty – normal behaviour                                      */
+    /* --------------------------------------------------------------------- */
+    @Test
+    public void testSetProperty_String() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        ps.setProperty("name", "Alice");
+        assertEquals("Alice", bean.getName());
+        assertTrue(ps.warnings.isEmpty());
+        assertTrue(ps.errors.isEmpty());
+    }
+
+    @Test
+    public void testSetProperty_IntConversion() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        ps.setProperty("age", "42");
+        assertEquals(42, bean.getAge());
+    }
+
+    @Test
+    public void testSetProperty_BooleanConversion() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        ps.setProperty("male", "true");
+        assertTrue(bean.isMale());
+    }
+
+    @Test
+    public void testSetProperty_NullValueIsIgnored() {
+        SimpleBean bean = new SimpleBean();
+        bean.setName("original");
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        ps.setProperty("name", null);
+        assertEquals("original", bean.getName()); // unchanged
+    }
+
+    @Test
+    public void testSetProperty_NoSuchSetterProducesWarning() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        ps.setProperty("unknown", "value");
+        assertEquals(1, ps.warnings.size());
+        assertTrue(ps.warnings.get(0).contains("No setter for property [unknown]"));
+    }
+
+    @Test
+    public void testSetProperty_ConversionFailureProducesWarning() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        // "notANumber" cannot be converted to int -> warning expected
+        ps.setProperty("age", "notANumber");
+        assertEquals(1, ps.warnings.size());
+        assertTrue(ps.warnings.get(0).contains("Failed to set property [age]"));
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 2. computeAggregationType                                               */
+    /* --------------------------------------------------------------------- */
+    @Test
+    public void testComputeAggregationType_AdderBasicProperty() {
+        CollectionBean bean = new CollectionBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        AggregationType type = ps.computeAggregationType("item");
+        assertEquals(AggregationType.AS_BASIC_PROPERTY_COLLECTION, type);
+    }
+
+    @Test
+    public void testComputeAggregationType_SetterBasicProperty() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        AggregationType type = ps.computeAggregationType("name");
+        assertEquals(AggregationType.AS_BASIC_PROPERTY, type);
+    }
+
+    @Test
+    public void testComputeAggregationType_SetterComplexProperty() {
+        AnnotatedBean bean = new AnnotatedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        AggregationType type = ps.computeAggregationType("component");
+        assertEquals(AggregationType.AS_COMPLEX_PROPERTY, type);
+    }
+
+    @Test
+    public void testComputeAggregationType_NotFound() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        AggregationType type = ps.computeAggregationType("nonexistent");
+        assertEquals(AggregationType.NOT_FOUND, type);
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 3. getRelevantMethod & getAnnotation                                    */
+    /* --------------------------------------------------------------------- */
+    @Test
+    public void testGetRelevantMethod_ForComplexProperty() throws Exception {
+        AnnotatedBean bean = new AnnotatedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        Method method = ps.getRelevantMethod("component", AggregationType.AS_COMPLEX_PROPERTY);
+        assertNotNull(method);
+        assertEquals("setComponent", method.getName());
+
+        // verify annotation retrieval
+        DefaultClass anno = ps.getAnnotation("component", DefaultClass.class, method);
+        assertNotNull(anno);
+        assertEquals(ComplexComponent.class, anno.value());
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testGetRelevantMethod_InvalidAggregationThrows() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ps.getRelevantMethod("name", AggregationType.AS_BASIC_PROPERTY); // illegal here
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 4. getClassNameViaImplicitRules                                          */
+    /* --------------------------------------------------------------------- */
+    @Test
+    public void testGetClassNameViaImplicitRules_RegistryOverrides() {
+        MixedBean bean = new MixedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+
+        // Register a concrete type that should be returned irrespective of other rules
+        registry.add(MixedBean.class, "title", Integer.class);
+
+        Class<?> result = ps.getClassNameViaImplicitRules("title",
+                AggregationType.AS_BASIC_PROPERTY,
+                registry);
+        assertEquals(Integer.class, result);
+    }
+
+    @Test
+    public void testGetClassNameViaImplicitRules_AnnotationTakesPrecedence() {
+        AnnotatedBean bean = new AnnotatedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+
+        Class<?> result = ps.getClassNameViaImplicitRules("component",
+                AggregationType.AS_COMPLEX_PROPERTY,
+                registry);
+        // Annotation declares ComplexComponent
+        assertEquals(ComplexComponent.class, result);
+    }
+
+    @Test
+    public void testGetClassNameViaImplicitRules_ConcreteInstantiable() {
+        MixedBean bean = new MixedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+
+        // No registry entry, no annotation – fallback to concrete type if instantiable
+        Class<?> result = ps.getClassNameViaImplicitRules("title",
+                AggregationType.AS_BASIC_PROPERTY,
+                registry);
+        // Setter parameter type is String (instantiable)
+        assertEquals(String.class, result);
+    }
+
+    @Test
+    public void testGetClassNameViaImplicitRules_NonInstantiableReturnsNull() {
+        MixedBean bean = new MixedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+
+        // Setter expects Service (an interface) → not unequivocally instantiable
+        Class<?> result = ps.getClassNameViaImplicitRules("service",
+                AggregationType.AS_COMPLEX_PROPERTY,
+                registry);
+        assertNull(result);
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 5. addBasicProperty (adder with String conversion)                     */
+    /* --------------------------------------------------------------------- */
+    @Test
+    public void testAddBasicProperty_Succeeds() {
+        CollectionBean bean = new CollectionBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        ps.addBasicProperty("item", "first");
+        ps.addBasicProperty("item", "second");
+
+        List<String> items = bean.getItems();
+        assertEquals(2, items.size());
+        assertEquals("first", items.get(0));
+        assertEquals("second", items.get(1));
+        assertTrue(ps.errors.isEmpty());
+    }
+
+    @Test
+    public void testAddBasicProperty_NoAdderProducesError() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        ps.addBasicProperty("name", "Bob");
+        assertEquals(1, ps.errors.size());
+        assertTrue(ps.errors.get(0).contains("No adder for property"));
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 6. addComplexProperty (adder with complex type)                        */
+    /* --------------------------------------------------------------------- */
+    public static class ComplexAdderBean {
+        private final List<ComplexComponent> components = new ArrayList<>();
+
+        public void addComponent(ComplexComponent comp) { components.add(comp); }
+        public List<ComplexComponent> getComponents() { return components; }
+    }
+
+    @Test
+    public void testAddComplexProperty_Succeeds() {
+        ComplexAdderBean bean = new ComplexAdderBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ComplexComponent comp = new ComplexComponent("data");
+
+        ps.addComplexProperty("Component", comp); // note capitalisation will be handled
+        assertEquals(1, bean.getComponents().size());
+        assertEquals("data", bean.getComponents().get(0).getValue());
+        assertTrue(ps.errors.isEmpty());
+    }
+
+    @Test
+    public void testAddComplexProperty_TypeMismatchProducesError() {
+        ComplexAdderBean bean = new ComplexAdderBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        // Pass a String where ComplexComponent is expected
+        ps.addComplexProperty("Component", "notAComponent");
+        assertEquals(1, ps.errors.size());
+        assertTrue(ps.errors.get(0).contains("object is not assignable"));
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 7. setComplexProperty (setter with complex type)                       */
+    /* --------------------------------------------------------------------- */
+    @Test
+    public void testSetComplexProperty_Succeeds() {
+        AnnotatedBean bean = new AnnotatedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ComplexComponent comp = new ComplexComponent("hello");
+
+        ps.setComplexProperty("component", comp);
+        assertNotNull(bean.getComponent());
+        assertEquals("hello", bean.getComponent().getValue());
+        assertTrue(ps.warnings.isEmpty());
+        assertTrue(ps.errors.isEmpty());
+    }
+
+    @Test
+    public void testSetComplexProperty_NoSetterProducesWarn() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ComplexComponent comp = new ComplexComponent();
+
+        ps.setComplexProperty("nonexistent", comp);
+        assertEquals(1, ps.warnings.size());
+        assertTrue(ps.warnings.get(0).contains("Not setter method for property"));
+    }
+
+    @Test
+    public void testSetComplexProperty_TypeMismatchProducesError() {
+        AnnotatedBean bean = new AnnotatedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        // Pass a String where ComplexComponent is required
+        ps.setComplexProperty("component", "bad");
+        assertEquals(1, ps.errors.size());
+        assertTrue(ps.errors.get(0).contains("object is not assignable"));
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 8. isUnequivocallyInstantiable – indirect verification via
+     *    getClassNameViaImplicitRules (already exercised)                     */
+    /* --------------------------------------------------------------------- */
+    @Test
+    public void testIsUnequivocallyInstantiable_DetectsInterface() throws Exception {
+        // Direct call via reflection to the private method for completeness
+        MixedBean bean = new MixedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        Method privateMethod = PropertySetter.class.getDeclaredMethod("isUnequivocallyInstantiable", Class.class);
+        privateMethod.setAccessible(true);
+
+        // Interface should return false
+        boolean result = (boolean) privateMethod.invoke(ps, Service.class);
+        assertFalse(result);
+    }
+
+    @Test
+    public void testIsUnequivocallyInstantiable_DetectsConcreteClass() throws Exception {
+        MixedBean bean = new MixedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+
+        Method privateMethod = PropertySetter.class.getDeclaredMethod("isUnequivocallyInstantiable", Class.class);
+        privateMethod.setAccessible(true);
+
+        // Concrete class with public no‑arg constructor → true
+        boolean result = (boolean) privateMethod.invoke(ps, ComplexComponent.class);
+        assertTrue(result);
+    }
+}

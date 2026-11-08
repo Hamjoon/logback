@@ -1,0 +1,118 @@
+[
+  {
+    "group": "ouedraogo",
+    "round": "round1",
+    "files": 15,
+    "compiled": 0,
+    "methods": 226,
+    "stable_runs": 1,
+    "stable_passed": 0,
+    "duplicates": 0,
+    "kept_this_round": 0,
+    "total_kept": 0,
+    "developer_denominator": 526,
+    "ratio_to_dev": 0.0,
+    "per_prompt": {
+      "ZSL": {
+        "files": 3,
+        "compiled": 0,
+        "methods": 44,
+        "stable": 0,
+        "duplicates": 0,
+        "kept": 0
+      },
+      "FSL": {
+        "files": 3,
+        "compiled": 0,
+        "methods": 36,
+        "stable": 0,
+        "duplicates": 0,
+        "kept": 0
+      },
+      "CoT": {
+        "files": 3,
+        "compiled": 0,
+        "methods": 56,
+        "stable": 0,
+        "duplicates": 0,
+        "kept": 0
+      },
+      "ToT": {
+        "files": 3,
+        "compiled": 0,
+        "methods": 34,
+        "stable": 0,
+        "duplicates": 0,
+        "kept": 0
+      },
+      "GToT": {
+        "files": 3,
+        "compiled": 0,
+        "methods": 56,
+        "stable": 0,
+        "duplicates": 0,
+        "kept": 0
+      }
+    },
+    "dev_unmapped_excluded": 0,
+    "notes": []
+  },
+  {
+    "group": "ouedraogo",
+    "round": "round2",
+    "files": 15,
+    "compiled": 2,
+    "methods": 235,
+    "stable_runs": 1,
+    "stable_passed": 34,
+    "duplicates": 0,
+    "kept_this_round": 34,
+    "total_kept": 34,
+    "developer_denominator": 526,
+    "ratio_to_dev": 0.06463878326996197,
+    "per_prompt": {
+      "ZSL": {
+        "files": 3,
+        "compiled": 0,
+        "methods": 45,
+        "stable": 0,
+        "duplicates": 0,
+        "kept": 0
+      },
+      "FSL": {
+        "files": 3,
+        "compiled": 0,
+        "methods": 34,
+        "stable": 0,
+        "duplicates": 0,
+        "kept": 0
+      },
+      "CoT": {
+        "files": 3,
+        "compiled": 1,
+        "methods": 55,
+        "stable": 14,
+        "duplicates": 0,
+        "kept": 14
+      },
+      "ToT": {
+        "files": 3,
+        "compiled": 1,
+        "methods": 46,
+        "stable": 20,
+        "duplicates": 0,
+        "kept": 20
+      },
+      "GToT": {
+        "files": 3,
+        "compiled": 0,
+        "methods": 55,
+        "stable": 0,
+        "duplicates": 0,
+        "kept": 0
+      }
+    },
+    "dev_unmapped_excluded": 0,
+    "notes": []
+  }
+]

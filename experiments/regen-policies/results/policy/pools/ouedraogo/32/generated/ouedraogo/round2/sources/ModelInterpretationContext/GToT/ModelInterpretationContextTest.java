@@ -1,0 +1,320 @@
+package ch.qos.logback.core.model.processor;
+import ch.qos.logback.core.joran.util.beans.BeanDescriptionCache;
+import ch.qos.logback.core.status.StatusManager;
+
+
+import ch.qos.logback.core.Appender;
+import ch.qos.logback.core.Context;
+import ch.qos.logback.core.joran.JoranConstants;
+import ch.qos.logback.core.joran.spi.DefaultNestedComponentRegistry;
+import ch.qos.logback.core.model.Model;
+import ch.qos.logback.core.model.util.VariableSubstitutionsHelper;
+import ch.qos.logback.core.spi.BeanDescriptionCache;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.util.*;
+
+import static org.junit.Assert.*;
+
+/**
+ * Comprehensive JUnit‑4 test suite for {@link ModelInterpretationContext}.
+ *
+ * The tests cover:
+ * <ul>
+ *   <li>All public constructors and methods (basic behaviour)</li>
+ *   <li>Edge‑case handling (nulls, empty strings, empty stacks, etc.)</li>
+ *   <li>Exception‑related scenarios (e.g. {@link EmptyStackException})</li>
+ * </ul>
+ *
+ * A tiny in‑memory {@link Context} implementation is provided so that the
+ * class can be instantiated without any external Logback infrastructure.
+ */
+public class ModelInterpretationContextTest {
+
+    /** Simple, in‑memory implementation of {@link Context} used only for tests. */
+    private static class SimpleContext implements Context {
+
+        private final Map<String, Object> objectMap = new HashMap<>();
+        private final Map<String, String> propertyMap = new HashMap<>();
+
+        // -----------------------------------------------------------------
+        // ContextAware methods (delegated to a no‑op ContextAwareBase)
+        // -----------------------------------------------------------------
+        @Override public void setContext(Context context) { /* no‑op */ }
+        @Override public Context getContext() { return this; }
+
+        // -----------------------------------------------------------------
+        // Object handling
+        // -----------------------------------------------------------------
+        @Override public Object getObject(String key) { return objectMap.get(key); }
+        @Override public void putObject(String key, Object value) { objectMap.put(key, value); }
+
+        // -----------------------------------------------------------------
+        // Property handling
+        // -----------------------------------------------------------------
+        @Override public String getProperty(String key) { return propertyMap.get(key); }
+        @Override public void putProperty(String key, String value) { propertyMap.put(key, value); }
+        @Override public Map<String, String> getCopyOfPropertyMap() { return new HashMap<>(propertyMap); }
+
+        // -----------------------------------------------------------------
+        // The rest of the Context API is not required for these tests.
+        // -----------------------------------------------------------------
+        @Override public ch.qos.logback.core.spi.StatusManager getStatusManager() { return null; }
+        @Override public long getBirthTime() { return 0L; }
+        @Override public Object getConfigurationLock() { return new Object(); }
+        @Override public java.util.concurrent.ScheduledExecutorService getScheduledExecutorService() { return null; }
+        @Override public java.util.concurrent.ExecutorService getExecutorService() { return null; }
+        @Override public java.util.concurrent.ExecutorService getAlternateExecutorService() { return null; }
+        @Override public void register(ch.qos.logback.core.spi.LifeCycle component) { }
+        @Override public void addScheduledFuture(java.util.concurrent.ScheduledFuture<?> scheduledFuture) { }
+        @Override public ch.qos.logback.core.spi.SequenceNumberGenerator getSequenceNumberGenerator() { return null; }
+        @Override public void setSequenceNumberGenerator(ch.qos.logback.core.spi.SequenceNumberGenerator sequenceNumberGenerator) { }
+        @Override public void addConfigurationEventListener(ch.qos.logback.core.spi.ConfigurationEventListener listener) { }
+        @Override public void fireConfigurationEvent(ch.qos.logback.core.spi.ConfigurationEvent configurationEvent) { }
+        @Override public String getName() { return "SimpleContext"; }
+        @Override public void setName(String name) { }
+        @Override public void addSubstitutionProperties(java.util.Properties props) {
+            for (String name : props.stringPropertyNames()) {
+                propertyMap.put(name, props.getProperty(name));
+            }
+        }
+    }
+
+    private SimpleContext context;
+    private ModelInterpretationContext mic;
+
+    @Before
+    public void setUp() {
+        context = new SimpleContext();
+        mic = new ModelInterpretationContext(context);
+    }
+
+    // -----------------------------------------------------------------
+    // 1. Constructors & basic getters/setters
+    // -----------------------------------------------------------------
+    @Test
+    public void testConstructorWithContextOnly() {
+        ModelInterpretationContext m = new ModelInterpretationContext(context);
+        assertNotNull("objectMap must be created", m.getObjectMap());
+        assertNotNull("variableSubstitutionsHelper must be created", m.subst("any"));
+    }
+
+    @Test
+    public void testConstructorWithHint() {
+        Object hint = new Object();
+        ModelInterpretationContext m = new ModelInterpretationContext(context, hint);
+        assertSame("Configurator hint must be stored", hint, m.getConfiguratorHint());
+    }
+
+    @Test
+    public void testCopyConstructorCopiesImportMapAndVariableMap() {
+        mic.addImport("List", "java.util.List");
+        mic.addSubstitutionProperty("key", "value");
+
+        ModelInterpretationContext copy = new ModelInterpretationContext(mic);
+        assertEquals("Import map must be copied", "java.util.List", copy.getImport("List"));
+        assertEquals("Variable map must be copied", "value", copy.getProperty("key"));
+    }
+
+    // -----------------------------------------------------------------
+    // 2. Appender bag creation
+    // -----------------------------------------------------------------
+    @Test
+    public void testCreateAppenderBagsPopulatesObjectMap() {
+        mic.createAppenderBags();
+        Map<String, Object> map = mic.getObjectMap();
+
+        assertTrue("APPENDER_BAG must be present", map.containsKey(JoranConstants.APPENDER_BAG));
+        assertTrue("APPENDER_REF_BAG must be present", map.containsKey(JoranConstants.APPENDER_REF_BAG));
+
+        assertTrue(map.get(JoranConstants.APPENDER_BAG) instanceof Map);
+        assertTrue(map.get(JoranConstants.APPENDER_REF_BAG) instanceof Map);
+    }
+
+    // -----------------------------------------------------------------
+    // 3. Top model handling
+    // -----------------------------------------------------------------
+    @Test
+    public void testTopModelGetterSetter() {
+        Model model = new Model();
+        mic.setTopModel(model);
+        assertSame("The same model instance must be returned", model, mic.getTopModel());
+    }
+
+    // -----------------------------------------------------------------
+    // 4. Model stack operations
+    // -----------------------------------------------------------------
+    @Test
+    public void testModelStackPushPeekPop() {
+        Model m1 = new Model();
+        Model m2 = new Model();
+
+        assertTrue("Stack must be empty initially", mic.isModelStackEmpty());
+
+        mic.pushModel(m1);
+        assertFalse("Stack must not be empty after push", mic.isModelStackEmpty());
+        assertSame(m1, mic.peekModel());
+
+        mic.pushModel(m2);
+        assertSame(m2, mic.peekModel());
+
+        assertSame(m2, mic.popModel());
+        assertSame(m1, mic.peekModel());
+        assertSame(m1, mic.popModel());
+
+        assertTrue("Stack must be empty after popping all", mic.isModelStackEmpty());
+    }
+
+    @Test(expected = EmptyStackException.class)
+    public void testModelStackPopEmptyThrows() {
+        mic.popModel(); // should throw
+    }
+
+    // -----------------------------------------------------------------
+    // 5. Object stack operations
+    // -----------------------------------------------------------------
+    @Test
+    public void testObjectStackBasicOperations() {
+        String obj1 = "first";
+        Integer obj2 = 42;
+
+        assertTrue(mic.isObjectStackEmpty());
+
+        mic.pushObject(obj1);
+        assertFalse(mic.isObjectStackEmpty());
+        assertEquals(obj1, mic.peekObject());
+
+        mic.pushObject(obj2);
+        assertEquals(obj2, mic.peekObject());
+
+        assertEquals(obj2, mic.popObject());
+        assertEquals(obj1, mic.peekObject());
+
+        assertEquals(obj1, mic.getObject(0));
+        assertEquals(obj1, mic.popObject());
+
+        assertTrue(mic.isObjectStackEmpty());
+    }
+
+    @Test(expected = EmptyStackException.class)
+    public void testObjectStackPeekEmptyThrows() {
+        mic.peekObject();
+    }
+
+    @Test(expected = EmptyStackException.class)
+    public void testObjectStackPopEmptyThrows() {
+        mic.popObject();
+    }
+
+    // -----------------------------------------------------------------
+    // 6. Configurator hint
+    // -----------------------------------------------------------------
+    @Test
+    public void testConfiguratorHintGetterSetter() {
+        Object hint = "myHint";
+        mic.setConfiguratorHint(hint);
+        assertSame(hint, mic.getConfiguratorHint());
+    }
+
+    // -----------------------------------------------------------------
+    // 7. BeanDescriptionCache & DefaultNestedComponentRegistry exposure
+    // -----------------------------------------------------------------
+    @Test
+    public void testBeanDescriptionCacheIsCreated() {
+        assertNotNull("BeanDescriptionCache must be non‑null", mic.getBeanDescriptionCache());
+    }
+
+    @Test
+    public void testDefaultNestedComponentRegistryIsAccessible() {
+        DefaultNestedComponentRegistry reg = mic.getDefaultNestedComponentRegistry();
+        assertNotNull(reg);
+        // simple sanity check – duplicate with an empty registry should not fail
+        reg.duplicate(new DefaultNestedComponentRegistry());
+    }
+
+    // -----------------------------------------------------------------
+    // 8. Variable substitution delegation
+    // -----------------------------------------------------------------
+    @Test
+    public void testSubstitutionRoundTrip() {
+        mic.addSubstitutionProperty("user", "john");
+        // VariableSubstitutionsHelper substitutes ${key}
+        String result = mic.subst("${user}");
+        assertEquals("john", result);
+    }
+
+    // -----------------------------------------------------------------
+    // 9. Dependency handling
+    // -----------------------------------------------------------------
+    @Test
+    public void testAddAndRetrieveDependencyDefinitions() {
+        Model depender = new Model();
+        DependencyDefinition dd = new DependencyDefinition(depender, "other");
+        mic.addDependencyDefinition(dd);
+
+        List<DependencyDefinition> list = mic.getDependencyDefinitions();
+        assertEquals(1, list.size());
+        assertSame(dd, list.get(0));
+
+        List<String> dependees = mic.getDependeeNamesForModel(depender);
+        assertEquals(1, dependees.size());
+        assertEquals("other", dependees.get(0));
+    }
+
+    @Test
+    public void testHasDependersEdgeCases() {
+        // No dependency added yet
+        assertFalse(mic.hasDependers("any"));
+
+        // Null and empty string – according to current implementation they
+        // *do not* throw but simply return false.
+        assertFalse("null argument should return false", mic.hasDependers(null));
+        assertFalse("empty string should return false", mic.hasDependers(""));
+        assertFalse("blank string should return false", mic.hasDependers("   "));
+    }
+
+    // -----------------------------------------------------------------
+    // 10. Named dependee start tracking
+    // -----------------------------------------------------------------
+    @Test
+    public void testMarkAndCheckNamedDependeeStarted() {
+        String name = "myDependee";
+        assertFalse(mic.isNamedDependeeStarted(name));
+        mic.markStartOfNamedDependee(name);
+        assertTrue(mic.isNamedDependeeStarted(name));
+    }
+
+    // -----------------------------------------------------------------
+    // 11. Import map handling
+    // -----------------------------------------------------------------
+    @Test
+    public void testAddImportAndGetImport() {
+        mic.addImport("List", "java.util.List");
+        assertEquals("java.util.List", mic.getImport("List"));
+        assertEquals("List", mic.getImport("UnknownStem"));
+        assertNull(mic.getImport(null));
+    }
+
+    @Test
+    public void testGetImportMapCopyIsIndependent() {
+        mic.addImport("Map", "java.util.Map");
+        Map<String, String> copy = mic.getImportMapCopy();
+
+        // modify the copy – original must stay unchanged
+        copy.put("Map", "changed");
+        assertEquals("java.util.Map", mic.getImport("Map"));
+    }
+
+    // -----------------------------------------------------------------
+    // 12. Property container delegation (add/get property)
+    // -----------------------------------------------------------------
+    @Test
+    public void testPropertyContainerDelegation() {
+        mic.addSubstitutionProperty("color", "blue");
+        assertEquals("blue", mic.getProperty("color"));
+        // The copy should contain the same entry
+        Map<String, String> copy = mic.getCopyOfPropertyMap();
+        assertEquals("blue", copy.get("color"));
+    }
+}

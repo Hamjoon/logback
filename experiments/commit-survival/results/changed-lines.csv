@@ -1,0 +1,46 @@
+index,sha,date,subject,all_executable,all_dev-scope_covered,all_dev-scope_percent,all_ktester_covered,all_ktester_percent,all_ouedraogo_covered,all_ouedraogo_percent,scope_executable,scope_dev-scope_covered,scope_dev-scope_percent,scope_ktester_covered,scope_ktester_percent,scope_ouedraogo_covered,scope_ouedraogo_percent,other_executable,other_dev-scope_covered,other_dev-scope_percent,other_ktester_covered,other_ktester_percent,other_ouedraogo_covered,other_ouedraogo_percent,dev-scope_lost,dev-scope_pre_image_covered,ktester_lost,ktester_pre_image_covered,ouedraogo_lost,ouedraogo_pre_image_covered
+1,867bf581b678a2eed60d56f257f328284e14ad45,2023-11-28T15:18:29+01:00,remove superflus system.out call,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+4,7018a3609c7bcc9dc7bf5903509901a986e5f578,2023-12-01T12:44:44+01:00,"fix missing deseialization filter init call, enable commented out test case",,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+7,724efb5cba2d4a47ec8acc722632fb30411193c0,2023-12-04T16:57:56+01:00,"fix typo, make ArchiveRemoverRunnable inner class  protected",,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+8,d7072d6ae6ab29ced696ae7ef290f1e2c121dcd5,2023-12-04T17:17:50+01:00,revert to public access for TimeBasedArchiveRemover.ArchiveRemoverRunnable,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+15,5782d298a4421cd5b8926d931e0f81e0de8e259a,2024-02-02T18:10:38+01:00, deprecated OptionHelper.isNullOrEmpty method and replaced by OptionHelper.isNullOrEmptyOrAllSpaces,,,,,,,,0,0,,0,,0,,,,,,,,,1,0,0,0,0,0
+16,9078f68f49673d2163ebbaa075ec4018a6d12e54,2024-02-02T22:12:36+01:00,allow enabling/disabling of output fields in JsonEncoder,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+17,ac788848219902ef5f86359215bced9ff4fa5aaf,2024-02-16T18:15:39+01:00,fix issues/779 using Multi-Release jar,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+21,b59f97e56fb5b5b41895bf29ecd8b3f5d4c311eb,2024-02-22T15:31:56+01:00,extract AggregationAssessor class from PropertyGetter,,,,,,,,12,11,91.667,0,0.0,9,75.0,,,,,,,,17,59,2,20,122,67
+22,4eaefeb113f2a33adc9bf6b09e7182ec2cd200b8,2024-02-22T19:41:01+01:00,change variable name,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+24,1e1c2a7f12f13de27b1d723a28c97a0a085174a6,2024-02-23T11:34:19+01:00,move 'capitalizeFirstLetter' method to StringUtil,,,,,,,,1,1,100.0,0,0.0,1,100.0,,,,,,,,0,1,0,0,0,1
+25,057ab677df86302246a48320948e08f43a0563c3,2024-02-24T23:15:56+01:00,"mark some methods public, more defensive code",,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+28,26b9106f96b3065205e7b3bda419976e76a1ec9a,2024-02-26T23:34:20+01:00,refactoring Property* related code,,,,,,,,6,4,66.667,4,66.667,0,0.0,,,,,,,,11,18,4,8,0,0
+29,a21c6b3593463c3a9144bd37ada7ca335e848ad8,2024-02-27T11:47:42+01:00,"introduce ContextAwarePropertyContainer, corresponding refactorings",,,,,,,,2,2,100.0,2,100.0,0,0.0,,,,,,,,0,2,0,2,0,0
+30,8f3a30422fbec60715aa14abc5321bc5c76e9b5d,2024-02-27T21:16:43+01:00,more fine tuning of propertyModelHandler and co,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+31,231e9bdcb3bf9e79fd028a4ca89fa8616d9d7551,2024-02-28T14:30:12+01:00,more internal changes and refactorings,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+35,6998e81db1f2cb1b863f57c5e32b7d3a12459e0d,2024-03-02T19:08:28+01:00,add NoAutoStartUtil.shouldBeStarted method,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+38,99ccca7986b5fb0fd029946e92623c0ac4d3868e,2024-03-04T12:34:59+01:00,fix /issues/785,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+40,acbbc2e8e9f4720f51a5bf274e3ae8066c5838a3,2024-03-07T11:55:09+01:00,start work on 1.5.4-SNAPSHOT,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+41,a68361620c0105a1d30116cb978203f2095a245c,2024-03-07T13:57:21+01:00,StatusPrinter2 replaces StatusPrinter,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+43,f8f0ed9463fc12d6e2d90bcffe2731037b4a1a09,2024-03-16T17:56:35+01:00,better reports in TimeBasedArchiveRemover,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+44,32259b359e5b4912ee71569f4741017133198514,2024-03-16T17:57:50+01:00,add an instance version of StatusPrinter,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+48,596fbea0dbb6b9a15289abb3657c218b36039432,2024-04-06T00:01:13+02:00,fix LOGBACK-1767,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+49,81ab4ac5b686904cfc879b9df1e640218a9fa5dd,2024-04-07T19:56:44+02:00,added more javadocs,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+54,af92be47a940393e11decab0a7ee4cb802d2b5e8,2024-04-10T18:30:23+02:00,"migrate IncludeAction code to IncludeModelHandler, LOGBACK-1746",,,,,,,,4,0,0.0,1,25.0,0,0.0,,,,,,,,0,0,0,1,0,0
+55,5a41c892002012550f207e45d3de57ccbfb6d259,2024-04-10T22:11:45+02:00,fix IncludeActionTest,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+57,4476edd0f3415008506bdaa23ce855b3eae5086a,2024-04-11T21:45:47+02:00,"Search for @NoAutoStart annotations in ancestor hierarchy, implemented interfaces and meta-annotations (#531)",,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+58,f32ed30166307385236b9f373103bd708e2f6857,2024-04-11T21:52:01+02:00,remove support for metaannotations for NoAutoStart annotation,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+64,759fc25ee384354a9159e64aa1fb7269d770fce4,2024-04-17T17:43:33+02:00,"fix issues/805 i.e. LOGBACK-1768, included file with inner conditional",,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+70,979d76f3f2847f1c129bcc6295e69187d02e472c,2024-05-10T22:37:32+02:00,fix LOGBACK-1445,,,,,,,,,,,,,,,,,,,,,,0,,0,,0,
+73,62d1eb11c5159904d0afefba3db0fda17673a47c,2024-08-03T15:30:10+02:00,ongoing work on ConversionRule support,,,,,,,,0,0,,0,,0,,,,,,,,,2,0,0,0,0,0
+77,e7d945906d3b1562c59a90906b55532c8efd83ab,2024-08-09T16:15:47+02:00,"migrate conversionWord to model based configuration, add MaskedKeyValuePairConverter",,,,,,,,0,0,,0,,0,,,,,,,,,0,0,8,15,0,0
+79,7c29474416f4e2273f5049699155374fd2c4eaef,2024-08-12T19:07:04+02:00,"add support for finding the console's charset, LOGBACK-1642",,,,,,,,,,,,,,,,,,,,,,0,0,0,0,0,0
+80,c1f21e9e750b82a1e0bb24d3ca01b3659e2c6ea4,2024-08-13T11:59:14+02:00,"add test in relation to variable subsitions for levels, report substitions, LOGBACK-1519",,,,,,,,4,3,75.0,0,0.0,0,0.0,,,,,,,,0,,0,,0,
+81,f7d5cf8257216589024455377595219f7c828d15,2024-08-13T17:37:13+02:00,extract constants for property keys,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+83,85bed93afaa89e067bb807e83781bffcdadeafc0,2024-08-14T11:41:31+02:00,fix race condition reported in LOGBACK-1362,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+84,94b67db13e099f9198574cfba265429ad8d38810,2024-08-14T11:54:02+02:00,Made `AsyncAppenderBase.isQueueBelowDiscardingThreshold` public to facilitate reporting loss of log events in a health check. (#325),,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+85,1b7fe9498d491e367da698bc921323bb11dd4120,2024-08-14T18:11:42+02:00,"add STRICT shortcut for ISO8601 date pattern, fixes LOGBACK-262",,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+86,3f572479817c85dbbe016f0eb01088702680852a,2024-08-15T18:13:13+02:00,"only one shutdown hooks allowed, locks during LoggerContext.stop operation, fixes LOGBACK-1551",,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+92,466edb7e89e7eee198a6fc1919c4a2325b245156,2024-08-30T16:21:20+02:00,moving to counter based file size computation instead of calling file.length(),,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+93,d1172d0ebda38db3c46f8d72096996cb6179a7b8,2024-08-30T23:03:00+02:00,further work on counter-based file size computation instead of periodically calling file.length(),,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+95,cb02c5f1a00b93d52afba0a12befb9f234202818,2024-09-03T21:50:03+02:00,adding a simplified PropertyConfigurator,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+97,9f4a2bc0cead02e76eb181fb654807407a6071ee,2024-09-04T20:47:48+02:00,further progress on PropertyConfigurator,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+98,4f9fb1fcb233821a7f89cef0d865fe0c6c7e0c9d,2024-09-06T16:41:36+02:00,reloadable properties configuration,,,,,,,,0,0,,0,,0,,,,,,,,,4,0,0,0,0,0
+99,4b1329624a213d46d365fe6810e01aee034c63bd,2024-09-06T16:50:22+02:00,less chatty output fixes tests,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0
+100,f629363102b67c2d52a48fa5524fc768aadfce5d,2024-09-06T18:57:45+02:00,faster test for propertyConfigurator reloading,,,,,,,,0,0,,0,,0,,,,,,,,,0,0,0,0,0,0

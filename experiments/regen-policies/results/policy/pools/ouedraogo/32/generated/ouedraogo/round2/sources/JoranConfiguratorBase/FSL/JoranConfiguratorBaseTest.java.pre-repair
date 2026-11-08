@@ -1,0 +1,215 @@
+package ch.qos.logback.core.joran;
+
+import static org.junit.Assert.*;
+
+import java.util.*;
+import java.util.function.Supplier;
+
+import org.junit.Test;
+import org.junit.Before;
+
+import ch.qos.logback.core.joran.action.*;
+import ch.qos.logback.core.joran.conditional.*;
+import ch.qos.logback.core.joran.sanity.AppenderWithinAppenderSanityChecker;
+import ch.qos.logback.core.joran.spi.*;
+import ch.qos.logback.core.model.*;
+import ch.qos.logback.core.model.processor.*;
+import ch.qos.logback.core.spi.ContextAware;
+
+/**
+ * Unit tests for {@link JoranConfiguratorBase}.
+ *
+ * The tests focus on the protected behaviour that can be exercised without
+ * involving the whole XML parsing machinery:
+ *
+ * <ul>
+ *   <li>Verification that the element‑selector → action associations are
+ *       registered correctly.</li>
+ *   <li>Verification that {@code sanityCheck} delegates to {@code performCheck}
+ *       with an {@link AppenderWithinAppenderSanityChecker} instance.</li>
+ *   <li>Verification that {@code performCheck} sets the context on a
+ *       {@link ContextAware} {@link SanityChecker} and invokes {@code check}.</li>
+ * </ul>
+ *
+ * A small concrete subclass of {@link JoranConfiguratorBase} is used to expose
+ * the protected methods via reflection.
+ */
+public class JoranConfiguratorBaseTest {
+
+    private TestConfigurator configurator;
+
+    @Before
+    public void setUp() {
+        configurator = new TestConfigurator();
+    }
+
+    /**
+     * Simple concrete subclass that does not add any extra behaviour.
+     */
+    private static class TestConfigurator extends JoranConfiguratorBase<Object> {
+        // No additional implementation required – all abstract methods are already
+        // implemented in the base class.
+    }
+
+    /**
+     * A {@link RuleStore} implementation that records the rules and the
+     * transparent path parts added by {@code addElementSelectorAndActionAssociations}.
+     */
+    private static class RecordingRuleStore implements RuleStore {
+        final Map<String, Supplier<Action>> rules = new LinkedHashMap<>();
+        final List<String> transparentParts = new ArrayList<>();
+
+        @Override
+        public void addRule(ElementSelector elementSelector, String actionClassStr) {
+            // Not used in this test suite.
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void addRule(ElementSelector elementSelector, Supplier<Action> actionSupplier) {
+            rules.put(elementSelector.getPath(), actionSupplier);
+        }
+
+        @Override
+        public Supplier<Action> matchActions(ElementPath elementPath) {
+            return rules.get(elementPath.toString());
+        }
+
+        @Override
+        public void addTransparentPathPart(String pathPart) {
+            transparentParts.add(pathPart);
+        }
+    }
+
+    @Test
+    public void testAddElementSelectorAndActionAssociations_registersExpectedSelectorsAndTransparentParts()
+            throws Exception {
+        RecordingRuleStore ruleStore = new RecordingRuleStore();
+
+        // invoke the protected method via reflection
+        java.lang.reflect.Method m = JoranConfiguratorBase.class
+                .getDeclaredMethod("addElementSelectorAndActionAssociations", RuleStore.class);
+        m.setAccessible(true);
+        m.invoke(configurator, ruleStore);
+
+        // Verify a few key selectors are present
+        assertTrue("selector */variable should be registered",
+                ruleStore.rules.containsKey("*/variable"));
+        assertTrue("selector */property should be registered",
+                ruleStore.rules.containsKey("*/property"));
+        assertTrue("selector configuration/import should be registered",
+                ruleStore.rules.containsKey("configuration/import"));
+        assertTrue("selector configuration/appender/appender-ref should be registered",
+                ruleStore.rules.containsKey("configuration/appender/appender-ref"));
+        assertTrue("selector */if/then should be registered",
+                ruleStore.rules.containsKey("*/if/then"));
+
+        // Verify transparent path parts
+        List<String> expectedTransparent = Arrays.asList("if", "then", "else", "sift");
+        for (String part : expectedTransparent) {
+            assertTrue("transparent part '" + part + "' should be registered",
+                    ruleStore.transparentParts.contains(part));
+        }
+    }
+
+    /**
+     * A {@link SanityChecker} implementation that also implements {@link ContextAware}
+     * so that we can verify that {@code performCheck} sets the context and calls
+     * {@code check}.
+     */
+    private static class DummySanityChecker implements SanityChecker, ContextAware {
+        boolean contextSet = false;
+        boolean checkCalled = false;
+        ContextAwareBase contextHolder = new ContextAwareBase();
+
+        @Override
+        public void setContext(ch.qos.logback.core.spi.Context context) {
+            contextSet = true;
+            contextHolder.setContext(context);
+        }
+
+        @Override
+        public ch.qos.logback.core.spi.Context getContext() {
+            return contextHolder.getContext();
+        }
+
+        @Override
+        public void addStatus(ch.qos.logback.core.status.Status status) {
+        }
+
+        @Override
+        public void addInfo(String msg) {
+        }
+
+        @Override
+        public void addInfo(String msg, Throwable ex) {
+        }
+
+        @Override
+        public void addWarn(String msg) {
+        }
+
+        @Override
+        public void addWarn(String msg, Throwable ex) {
+        }
+
+        @Override
+        public void addError(String msg) {
+        }
+
+        @Override
+        public void addError(String msg, Throwable ex) {
+        }
+
+        @Override
+        public void check(Model model) {
+            checkCalled = true;
+        }
+    }
+
+    @Test
+    public void testPerformCheck_setsContextOnContextAwareChecker_andInvokesCheck() throws Exception {
+        DummySanityChecker dummyChecker = new DummySanityChecker();
+        Model dummyModel = new Model();
+
+        // The configurator inherits ContextAwareBase; we can leave its context null.
+        configurator.performCheck(dummyChecker, dummyModel);
+
+        assertTrue("Context should have been set on the checker", dummyChecker.contextSet);
+        assertTrue("check() should have been invoked", dummyChecker.checkCalled);
+    }
+
+    /**
+     * Subclass that captures the arguments passed to {@code performCheck}.
+     */
+    private static class CapturingConfigurator extends JoranConfiguratorBase<Object> {
+        SanityChecker capturedChecker;
+        Model capturedModel;
+
+        @Override
+        protected void performCheck(SanityChecker sc, Model model) {
+            this.capturedChecker = sc;
+            this.capturedModel = model;
+            // Do not delegate to the real implementation – we only want to capture.
+        }
+    }
+
+    @Test
+    public void testSanityCheck_delegatesToPerformCheckWithAppenderWithinAppenderSanityChecker()
+            throws Exception {
+        CapturingConfigurator capConfig = new CapturingConfigurator();
+        Model topModel = new Model();
+
+        // invoke the protected sanityCheck method via reflection
+        java.lang.reflect.Method m = JoranConfiguratorBase.class
+                .getDeclaredMethod("sanityCheck", Model.class);
+        m.setAccessible(true);
+        m.invoke(capConfig, topModel);
+
+        assertNotNull("performCheck should have been called", capConfig.capturedChecker);
+        assertTrue("The sanity checker should be an AppenderWithinAppenderSanityChecker",
+                capConfig.capturedChecker instanceof AppenderWithinAppenderSanityChecker);
+        assertSame("The model passed to performCheck should be the one supplied",
+                topModel, capConfig.capturedModel);
+    }
+}

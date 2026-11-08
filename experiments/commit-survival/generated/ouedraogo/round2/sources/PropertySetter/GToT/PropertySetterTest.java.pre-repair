@@ -1,0 +1,537 @@
+package ch.qos.logback.core.joran.util;
+
+import static org.junit.Assert.*;
+
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.junit.Before;
+import org.junit.Test;
+
+import ch.qos.logback.core.joran.spi.DefaultClass;
+import ch.qos.logback.core.joran.spi.DefaultNestedComponentRegistry;
+import ch.qos.logback.core.joran.util.beans.BeanDescription;
+import ch.qos.logback.core.joran.util.beans.BeanDescriptionCache;
+import ch.qos.logback.core.util.AggregationType;
+import ch.qos.logback.core.util.PropertySetterException;
+
+/**
+ * Comprehensive JUnit‑4 test suite for {@link PropertySetter}.
+ *
+ * The tests cover:
+ * <ul>
+ *   <li>All public methods (basic happy‑path usage)</li>
+ *   <li>Edge cases such as null values, missing setters/adders, type‑mismatches</li>
+ *   <li>Exception handling (conversion failures, illegal reflections)</li>
+ *   <li>Behaviour of the implicit‑rules lookup (registry, annotations, concrete types)</li>
+ * </ul>
+ *
+ * A small test bean hierarchy is defined inside the test class to avoid any external
+ * dependencies.  A {@link TestablePropertySetter} subclass captures messages that
+ * {@link PropertySetter} would normally send to the Logback status manager, allowing
+ * assertions on warnings and errors.
+ */
+public class PropertySetterTest {
+
+    /* ---------------------------------------------------------------------- */
+    /* Helper test beans                                                     */
+    /* ---------------------------------------------------------------------- */
+
+    /** Simple bean with basic setters (String, int, boolean). */
+    public static class SimpleBean {
+        private String name;
+        private int age;
+        private boolean male;
+
+        public void setName(String name) { this.name = name; }
+        public String getName() { return name; }
+
+        public void setAge(int age) { this.age = age; }
+        public int getAge() { return age; }
+
+        public void setMale(boolean male) { this.male = male; }
+        public boolean isMale() { return male; }
+    }
+
+    /** Bean that supports adder methods for collections. */
+    public static class CollectionBean {
+        private final java.util.List<String> items = new java.util.ArrayList<>();
+        private final java.util.List<ComplexBean> complexItems = new java.util.ArrayList<>();
+
+        public void addItem(String s) { items.add(s); }
+        public java.util.List<String> getItems() { return items; }
+
+        public void addComplex(ComplexBean c) { complexItems.add(c); }
+        public java.util.List<ComplexBean> getComplexItems() { return complexItems; }
+    }
+
+    /** Complex bean used for “complex property” tests. */
+    public static class ComplexBean {
+        private String value;
+        public void setValue(String v) { this.value = v; }
+        public String getValue() { return value; }
+    }
+
+    /** Bean with a setter annotated with @DefaultClass. */
+    public static class AnnotatedBean {
+        private ComplexBean complex;
+
+        @DefaultClass(ComplexBean.class)
+        public void setComplex(ComplexBean c) { this.complex = c; }
+        public ComplexBean getComplex() { return complex; }
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* Test infrastructure                                                   */
+    /* ---------------------------------------------------------------------- */
+
+    /** Simple Context implementation – only needed to satisfy constructors. */
+    public static class SimpleContext implements ch.qos.logback.core.spi.Context {
+        private final java.util.List<ch.qos.logback.core.status.Status> statusList = new java.util.ArrayList<>();
+
+        @Override public void addStatus(ch.qos.logback.core.status.Status status) { statusList.add(status); }
+        @Override public void addInfo(String msg) {}
+        @Override public void addInfo(String msg, Throwable ex) {}
+        @Override public void addWarn(String msg) {}
+        @Override public void addWarn(String msg, Throwable ex) {}
+        @Override public void addError(String msg) {}
+        @Override public void addError(String msg, Throwable ex) {}
+        @Override public void setName(String name) {}
+        @Override public String getName() { return "simple"; }
+        @Override public ch.qos.logback.core.spi.LifeCycle getLifeCycle() { return null; }
+        @Override public ch.qos.logback.core.spi.Context getContext() { return this; }
+        @Override public void setContext(ch.qos.logback.core.spi.Context context) {}
+        @Override public ch.qos.logback.core.spi.Context getParentContext() { return null; }
+        @Override public void setParentContext(ch.qos.logback.core.spi.Context parent) {}
+        @Override public ch.qos.logback.core.spi.StatusManager getStatusManager() { return null; }
+        @Override public void reset() {}
+        @Override public ch.qos.logback.core.spi.Context getObject(String key) { return null; }
+        @Override public void putObject(String key, Object value) {}
+        @Override public Object getObject(String key) { return null; }
+        @Override public java.util.Map<String, String> getCopyOfPropertyMap() { return null; }
+        @Override public void putProperty(String key, String value) {}
+        @Override public String getProperty(String key) { return null; }
+        @Override public java.util.Enumeration<String> getPropertyKeyEnumerator() { return null; }
+        @Override public String getProperty(String key, String defaultValue) { return null; }
+    }
+
+    /** Subclass that records warnings and errors for verification. */
+    public static class TestablePropertySetter extends PropertySetter {
+        private final java.util.List<String> warnings = new java.util.ArrayList<>();
+        private final java.util.List<String> errors   = new java.util.ArrayList<>();
+
+        public TestablePropertySetter(BeanDescriptionCache cache, Object obj) {
+            super(cache, obj);
+        }
+
+        @Override
+        public void addWarn(String msg) {
+            warnings.add(msg);
+        }
+
+        @Override
+        public void addWarn(String msg, Throwable ex) {
+            warnings.add(msg + " : " + ex.getMessage());
+        }
+
+        @Override
+        public void addError(String msg) {
+            errors.add(msg);
+        }
+
+        @Override
+        public void addError(String msg, Throwable ex) {
+            errors.add(msg + " : " + ex.getMessage());
+        }
+
+        public java.util.List<String> getWarnings() { return warnings; }
+        public java.util.List<String> getErrors()   { return errors; }
+    }
+
+    /** Minimal BeanDescriptionCache that returns a BeanDescription built from reflection. */
+    public static class SimpleBeanDescriptionCache extends BeanDescriptionCache {
+        public SimpleBeanDescriptionCache(ch.qos.logback.core.spi.Context ctx) {
+            super(ctx);
+        }
+
+        @Override
+        public BeanDescription getBeanDescription(Class<?> clazz) {
+            // Build maps of setters & adders using reflection.
+            Map<String, Method> setters = new HashMap<>();
+            Map<String, Method> adders  = new HashMap<>();
+
+            for (Method m : clazz.getMethods()) {
+                if (m.getName().startsWith("set") && m.getParameterCount() == 1) {
+                    String prop = BeanUtil.toLowerCamelCase(m.getName().substring(3));
+                    setters.put(prop, m);
+                } else if (m.getName().startsWith("add") && m.getParameterCount() == 1) {
+                    String prop = BeanUtil.toLowerCamelCase(m.getName().substring(3));
+                    adders.put(prop, m);
+                }
+            }
+            return new BeanDescription(clazz, null, setters, adders);
+        }
+    }
+
+    private SimpleBeanDescriptionCache cache;
+    private SimpleContext context;
+
+    @Before
+    public void setUp() {
+        context = new SimpleContext();
+        cache = new SimpleBeanDescriptionCache(context);
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* 1.  setProperty – basic happy path                                    */
+    /* ---------------------------------------------------------------------- */
+
+    @Test
+    public void testSetProperty_String() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ps.setProperty("name", "Alice");
+        assertEquals("Alice", bean.getName());
+        assertTrue(ps.getWarnings().isEmpty());
+        assertTrue(ps.getErrors().isEmpty());
+    }
+
+    @Test
+    public void testSetProperty_IntConversion() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ps.setProperty("age", "42");
+        assertEquals(42, bean.getAge());
+    }
+
+    @Test
+    public void testSetProperty_BooleanConversion() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ps.setProperty("male", "true");
+        assertTrue(bean.isMale());
+    }
+
+    @Test
+    public void testSetProperty_NullValueIsIgnored() {
+        SimpleBean bean = new SimpleBean();
+        bean.setName("Initial");
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ps.setProperty("name", null); // should return silently
+        assertEquals("Initial", bean.getName());
+    }
+
+    @Test
+    public void testSetProperty_MissingSetterProducesWarning() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ps.setProperty("nonExisting", "value");
+        assertEquals(1, ps.getWarnings().size());
+        assertTrue(ps.getWarnings().get(0).contains("No setter for property [nonExisting]"));
+    }
+
+    @Test
+    public void testSetProperty_ConversionFailureProducesWarning() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ps.setProperty("age", "notANumber"); // conversion will fail
+        assertEquals(1, ps.getWarnings().size());
+        assertTrue(ps.getWarnings().get(0).contains("Failed to set property [age]"));
+        // bean's age remains default 0
+        assertEquals(0, bean.getAge());
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* 2.  computeAggregationType                                            */
+    /* ---------------------------------------------------------------------- */
+
+    @Test
+    public void testComputeAggregationType_AdderFound_Basic() {
+        CollectionBean bean = new CollectionBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        AggregationType type = ps.computeAggregationType("item"); // addItem(String)
+        assertEquals(AggregationType.AS_BASIC_PROPERTY_COLLECTION, type);
+    }
+
+    @Test
+    public void testComputeAggregationType_AdderFound_Complex() {
+        CollectionBean bean = new CollectionBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        AggregationType type = ps.computeAggregationType("complex"); // addComplex(ComplexBean)
+        assertEquals(AggregationType.AS_COMPLEX_PROPERTY_COLLECTION, type);
+    }
+
+    @Test
+    public void testComputeAggregationType_SetterFound_Basic() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        AggregationType type = ps.computeAggregationType("age"); // setAge(int)
+        assertEquals(AggregationType.AS_BASIC_PROPERTY, type);
+    }
+
+    @Test
+    public void testComputeAggregationType_SetterFound_Complex() {
+        AnnotatedBean bean = new AnnotatedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        AggregationType type = ps.computeAggregationType("complex"); // setComplex(ComplexBean)
+        assertEquals(AggregationType.AS_COMPLEX_PROPERTY, type);
+    }
+
+    @Test
+    public void testComputeAggregationType_NotFound() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        AggregationType type = ps.computeAggregationType("unknownProp");
+        assertEquals(AggregationType.NOT_FOUND, type);
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* 3.  getObjClass                                                          */
+    /* ---------------------------------------------------------------------- */
+
+    @Test
+    public void testGetObjClass() {
+        SimpleBean bean = new SimpleBean();
+        PropertySetter ps = new PropertySetter(cache, bean);
+        assertEquals(SimpleBean.class, ps.getObjClass());
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* 4.  addComplexProperty – happy path & edge cases                      */
+    /* ---------------------------------------------------------------------- */
+
+    @Test
+    public void testAddComplexProperty_HappyPath() {
+        CollectionBean bean = new CollectionBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ComplexBean complex = new ComplexBean();
+        complex.setValue("hello");
+        ps.addComplexProperty("Complex", complex); // addComplex(ComplexBean)
+        assertEquals(1, bean.getComplexItems().size());
+        assertSame(complex, bean.getComplexItems().get(0));
+    }
+
+    @Test
+    public void testAddComplexProperty_NoAdderProducesError() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ps.addComplexProperty("NonExisting", new Object());
+        assertEquals(1, ps.getErrors().size());
+        assertTrue(ps.getErrors().get(0).contains("Could not find method [addNonExisting]"));
+    }
+
+    @Test
+    public void testAddComplexProperty_TypeMismatchProducesError() {
+        CollectionBean bean = new CollectionBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ps.addComplexProperty("Complex", "I am a String"); // adder expects ComplexBean
+        assertEquals(1, ps.getErrors().size());
+        assertTrue(ps.getErrors().get(0).contains("object is not assignable"));
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* 5.  addBasicProperty – happy path & edge cases                        */
+    /* ---------------------------------------------------------------------- */
+
+    @Test
+    public void testAddBasicProperty_HappyPath() {
+        CollectionBean bean = new CollectionBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ps.addBasicProperty("item", "first");
+        assertEquals(1, bean.getItems().size());
+        assertEquals("first", bean.getItems().get(0));
+    }
+
+    @Test
+    public void testAddBasicProperty_NoAdderError() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ps.addBasicProperty("nonExisting", "value");
+        assertEquals(1, ps.getErrors().size());
+        assertTrue(ps.getErrors().get(0).contains("No adder for property"));
+    }
+
+    @Test
+    public void testAddBasicProperty_ConversionFailureError() {
+        CollectionBean bean = new CollectionBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        // adder expects String, conversion will never fail – we force a failure by
+        // passing a value that cannot be converted to the expected type (null is handled earlier)
+        // Here we use a bogus type by creating a bean with an adder that expects Integer.
+        // To keep the test simple we reuse SimpleBean's setAge (int) via an adder simulation:
+        // we create a wrapper bean that has an addAge(int) method.
+        class Wrapper {
+            public void addAge(Integer i) {}
+        }
+        Wrapper wrapper = new Wrapper();
+        TestablePropertySetter psWrapper = new TestablePropertySetter(cache, wrapper);
+        psWrapper.addBasicProperty("age", "notAnInt");
+        assertEquals(1, psWrapper.getErrors().size());
+        assertTrue(psWrapper.getErrors().get(0).contains("Conversion to type"));
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* 6.  setComplexProperty – happy path & edge cases                        */
+    /* ---------------------------------------------------------------------- */
+
+    @Test
+    public void testSetComplexProperty_HappyPath() {
+        SimpleBean bean = new SimpleBean();
+        // SimpleBean does NOT have a complex setter – we use AnnotatedBean instead
+        AnnotatedBean annotatedBean = new AnnotatedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, annotatedBean);
+        ComplexBean complex = new ComplexBean();
+        complex.setValue("xyz");
+        ps.setComplexProperty("Complex", complex);
+        assertSame(complex, annotatedBean.getComplex());
+    }
+
+    @Test
+    public void testSetComplexProperty_NoSetterWarns() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        ps.setComplexProperty("NonExisting", new Object());
+        assertEquals(1, ps.getWarnings().size());
+        assertTrue(ps.getWarnings().get(0).contains("Not setter method for property"));
+    }
+
+    @Test
+    public void testSetComplexProperty_TypeMismatchError() {
+        CollectionBean bean = new CollectionBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        // No setter named "Complex" – we force a mismatch by using existing adder (addComplex)
+        // but setComplexProperty looks for a setter, therefore it will warn not find.
+        ps.setComplexProperty("Complex", "StringNotComplexBean");
+        // Since no setter, only a warning is produced, not an error.
+        assertEquals(1, ps.getWarnings().size());
+        assertTrue(ps.getWarnings().get(0).contains("Not setter method for property"));
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* 7.  getClassNameViaImplicitRules – registry, annotation, concrete     */
+    /* ---------------------------------------------------------------------- */
+
+    @Test
+    public void testGetClassNameViaImplicitRules_RegistryProvides() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+        registry.add(SimpleBean.class, "myProp", ComplexBean.class);
+        Class<?> result = ps.getClassNameViaImplicitRules("myProp", AggregationType.AS_COMPLEX_PROPERTY, registry);
+        assertEquals(ComplexBean.class, result);
+    }
+
+    @Test
+    public void testGetClassNameViaImplicitRules_AnnotationProvides() throws NoSuchMethodException {
+        AnnotatedBean bean = new AnnotatedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        // The setter is annotated with @DefaultClass(ComplexBean.class)
+        Method setter = bean.getClass().getMethod("setComplex", ComplexBean.class);
+        // Force the lookup to use the annotation path by providing a registry that returns null.
+        DefaultNestedComponentRegistry emptyRegistry = new DefaultNestedComponentRegistry();
+        Class<?> result = ps.getClassNameViaImplicitRules("complex", AggregationType.AS_COMPLEX_PROPERTY, emptyRegistry);
+        assertEquals(ComplexBean.class, result);
+    }
+
+    @Test
+    public void testGetClassNameViaImplicitRules_ConcreteInstantiable() {
+        // Use CollectionBean where addComplex expects ComplexBean – concrete type is instantiable.
+        CollectionBean bean = new CollectionBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        DefaultNestedComponentRegistry emptyRegistry = new DefaultNestedComponentRegistry();
+        Class<?> result = ps.getClassNameViaImplicitRules("complex", AggregationType.AS_COMPLEX_PROPERTY_COLLECTION, emptyRegistry);
+        assertEquals(ComplexBean.class, result);
+    }
+
+    @Test
+    public void testGetClassNameViaImplicitRules_NoneFoundReturnsNull() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        DefaultNestedComponentRegistry emptyRegistry = new DefaultNestedComponentRegistry();
+        Class<?> result = ps.getClassNameViaImplicitRules("unknown", AggregationType.AS_BASIC_PROPERTY, emptyRegistry);
+        assertNull(result);
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* 8.  getRelevantMethod – sanity check (exception for illegal type)      */
+    /* ---------------------------------------------------------------------- */
+
+    @Test(expected = IllegalStateException.class)
+    public void testGetRelevantMethod_IllegalAggregationTypeThrows() {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        // Pass an aggregation type that is not allowed for getRelevantMethod
+        ps.getRelevantMethod("name", AggregationType.AS_BASIC_PROPERTY);
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* 9.  getAnnotation – returns correct annotation or null               */
+    /* ---------------------------------------------------------------------- */
+
+    @Test
+    public void testGetAnnotation_ReturnsAnnotation() throws NoSuchMethodException {
+        AnnotatedBean bean = new AnnotatedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        Method setter = bean.getClass().getMethod("setComplex", ComplexBean.class);
+        DefaultClass ann = ps.getAnnotation("complex", DefaultClass.class, setter);
+        assertNotNull(ann);
+        assertEquals(ComplexBean.class, ann.value());
+    }
+
+    @Test
+    public void testGetAnnotation_NullWhenMethodIsNull() {
+        TestablePropertySetter ps = new TestablePropertySetter(cache, new SimpleBean());
+        assertNull(ps.getAnnotation("any", DefaultClass.class, null));
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* 10.  getDefaultClassNameByAnnonation – indirect test via getAnnotation */
+    /* ---------------------------------------------------------------------- */
+
+    @Test
+    public void testGetDefaultClassNameByAnnonation_UsesAnnotation() throws NoSuchMethodException {
+        AnnotatedBean bean = new AnnotatedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        Method setter = bean.getClass().getMethod("setComplex", ComplexBean.class);
+        Class<?> clazz = ps.getDefaultClassNameByAnnonation("complex", setter);
+        assertEquals(ComplexBean.class, clazz);
+    }
+
+    @Test
+    public void testGetDefaultClassNameByAnnonation_ReturnsNullWhenNoAnnotation() throws NoSuchMethodException {
+        SimpleBean bean = new SimpleBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        Method setter = bean.getClass().getMethod("setName", String.class);
+        Class<?> clazz = ps.getDefaultClassNameByAnnonation("name", setter);
+        assertNull(clazz);
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* 11.  getByConcreteType – returns concrete class only if instantiable   */
+    /* ---------------------------------------------------------------------- */
+
+    @Test
+    public void testGetByConcreteType_InstantiableReturnsClass() throws NoSuchMethodException {
+        // ComplexBean has a public no‑arg constructor – instantiable.
+        AnnotatedBean bean = new AnnotatedBean();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, bean);
+        Method setter = bean.getClass().getMethod("setComplex", ComplexBean.class);
+        Class<?> result = ps.getByConcreteType("complex", setter);
+        assertEquals(ComplexBean.class, result);
+    }
+
+    @Test
+    public void testGetByConcreteType_NotInstantiableReturnsNull() throws NoSuchMethodException {
+        // Use an interface type to guarantee non‑instantiable.
+        class InterfaceHolder {
+            public void setRunnable(java.lang.Runnable r) {}
+        }
+        InterfaceHolder holder = new InterfaceHolder();
+        TestablePropertySetter ps = new TestablePropertySetter(cache, holder);
+        Method setter = holder.getClass().getMethod("setRunnable", java.lang.Runnable.class);
+        Class<?> result = ps.getByConcreteType("runnable", setter);
+        assertNull(result);
+    }
+}

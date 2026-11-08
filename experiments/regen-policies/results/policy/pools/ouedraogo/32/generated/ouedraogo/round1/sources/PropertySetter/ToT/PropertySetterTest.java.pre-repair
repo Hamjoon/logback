@@ -1,0 +1,307 @@
+package ch.qos.logback.core.joran.util;
+
+import static org.junit.Assert.*;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.junit.Before;
+import org.junit.Test;
+
+import ch.qos.logback.core.ContextBase;
+import ch.qos.logback.core.joran.spi.DefaultNestedComponentRegistry;
+import ch.qos.logback.core.util.AggregationType;
+import ch.qos.logback.core.util.PropertySetterException;
+
+/**
+ * Comprehensive JUnit‑4 test suite for {@link PropertySetter}.
+ *
+ * <p>The tests cover:
+ * <ul>
+ *   <li>basic property setting (String, int, boolean)</li>
+ *   <li>missing setter handling</li>
+ *   <li>conversion failures</li>
+ *   <li>aggregation type computation</li>
+ *   <li>adding complex and basic properties</li>
+ *   <li>setting complex properties</li>
+ *   <li>implicit‑rule class name resolution</li>
+ *   <li>accessor methods {@code getObj()}, {@code getObjClass()}</li>
+ * </ul>
+ *
+ * <p>Only public APIs listed in the problem statement are used; no mocking
+ * frameworks are involved.
+ */
+public class PropertySetterTest {
+
+    /* --------------------------------------------------------------------- *
+     *  Helper bean classes used by the tests
+     * --------------------------------------------------------------------- */
+
+    /** Simple bean with primitive‑type setters. */
+    public static class SimpleBean {
+        private String name;
+        private int age;
+        private boolean active;
+
+        public void setName(String name) { this.name = name; }
+        public void setAge(int age) { this.age = age; }
+        public void setActive(boolean active) { this.active = active; }
+
+        public String getName() { return name; }
+        public int getAge() { return age; }
+        public boolean isActive() { return active; }
+    }
+
+    /** Bean that supports adding basic (String) elements via an “adder”. */
+    public static class BasicCollectionBean {
+        private final List<String> items = new ArrayList<>();
+
+        public void addItem(String item) { items.add(item); }
+        public List<String> getItems() { return items; }
+    }
+
+    /** Bean that supports adding complex objects via an “adder”. */
+    public static class ComplexCollectionBean {
+        private final List<Child> children = new ArrayList<>();
+
+        public void addChild(Child child) { children.add(child); }
+        public List<Child> getChildren() { return children; }
+    }
+
+    /** Bean that has a normal setter for a complex object. */
+    public static class ComplexPropertyBean {
+        private Child child;
+
+        public void setChild(Child child) { this.child = child; }
+        public Child getChild() { return child; }
+    }
+
+    /** Simple POJO used as a complex property. */
+    public static class Child {
+        private final String id;
+
+        public Child(String id) { this.id = id; }
+        public String getId() { return id; }
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Test fixtures
+     * --------------------------------------------------------------------- */
+
+    private ContextBase context;
+    private BeanDescriptionCache cache;
+
+    @Before
+    public void setUp() {
+        // ContextBase is the standard implementation of the Context interface.
+        context = new ContextBase();
+        cache = new BeanDescriptionCache(context);
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Tests for setProperty(String, String)
+     * --------------------------------------------------------------------- */
+
+    @Test
+    public void testSetProperty_StringValue() {
+        SimpleBean bean = new SimpleBean();
+        PropertySetter setter = new PropertySetter(cache, bean);
+
+        setter.setProperty("name", "Alice");
+        assertEquals("Alice", bean.getName());
+    }
+
+    @Test
+    public void testSetProperty_IntConversion() {
+        SimpleBean bean = new SimpleBean();
+        PropertySetter setter = new PropertySetter(cache, bean);
+
+        setter.setProperty("age", "42");
+        assertEquals(42, bean.getAge());
+    }
+
+    @Test
+    public void testSetProperty_BooleanConversion() {
+        SimpleBean bean = new SimpleBean();
+        PropertySetter setter = new PropertySetter(cache, bean);
+
+        setter.setProperty("active", "true");
+        assertTrue(bean.isActive());
+
+        // also test false
+        setter.setProperty("active", "false");
+        assertFalse(bean.isActive());
+    }
+
+    @Test
+    public void testSetProperty_NoSuchSetter() {
+        SimpleBean bean = new SimpleBean();
+        PropertySetter setter = new PropertySetter(cache, bean);
+
+        // property "unknown" does not exist – should not throw
+        setter.setProperty("unknown", "value");
+        // bean state must stay unchanged
+        assertNull(bean.getName());
+        assertEquals(0, bean.getAge());
+        assertFalse(bean.isActive());
+    }
+
+    @Test
+    public void testSetProperty_ConversionFailure() {
+        SimpleBean bean = new SimpleBean();
+        PropertySetter setter = new PropertySetter(cache, bean);
+
+        // "age" expects an int – passing a non‑numeric string causes conversion failure
+        setter.setProperty("age", "notANumber");
+        // original value must remain the default (0)
+        assertEquals(0, bean.getAge());
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Tests for computeAggregationType(String)
+     * --------------------------------------------------------------------- */
+
+    @Test
+    public void testComputeAggregationType_BasicProperty() {
+        SimpleBean bean = new SimpleBean();
+        PropertySetter setter = new PropertySetter(cache, bean);
+
+        AggregationType type = setter.computeAggregationType("name");
+        // For a simple setter the assessor should report AS_BASIC_PROPERTY
+        assertEquals(AggregationType.AS_BASIC_PROPERTY, type);
+    }
+
+    @Test
+    public void testComputeAggregationType_ComplexPropertyCollection() {
+        ComplexCollectionBean bean = new ComplexCollectionBean();
+        PropertySetter setter = new PropertySetter(cache, bean);
+
+        AggregationType type = setter.computeAggregationType("Child");
+        // Adding a complex object via an adder should be reported as a complex collection
+        assertEquals(AggregationType.AS_COMPLEX_PROPERTY_COLLECTION, type);
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Tests for addComplexProperty(String, Object)
+     * --------------------------------------------------------------------- */
+
+    @Test
+    public void testAddComplexProperty_Success() {
+        ComplexCollectionBean bean = new ComplexCollectionBean();
+        PropertySetter setter = new PropertySetter(cache, bean);
+        Child child = new Child("c1");
+
+        setter.addComplexProperty("Child", child);
+        assertEquals(1, bean.getChildren().size());
+        assertSame(child, bean.getChildren().get(0));
+    }
+
+    @Test
+    public void testAddComplexProperty_NoAdder() {
+        SimpleBean bean = new SimpleBean();
+        PropertySetter setter = new PropertySetter(cache, bean);
+        Child child = new Child("c1");
+
+        // No "addChild" method exists – method should simply return without exception
+        setter.addComplexProperty("Child", child);
+        // No state to verify; we only assert that no exception is thrown
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Tests for addBasicProperty(String, String)
+     * --------------------------------------------------------------------- */
+
+    @Test
+    public void testAddBasicProperty_Success() {
+        BasicCollectionBean bean = new BasicCollectionBean();
+        PropertySetter setter = new PropertySetter(cache, bean);
+
+        setter.addBasicProperty("item", "first");
+        setter.addBasicProperty("item", "second");
+
+        List<String> items = bean.getItems();
+        assertEquals(2, items.size());
+        assertEquals("first", items.get(0));
+        assertEquals("second", items.get(1));
+    }
+
+    @Test
+    public void testAddBasicProperty_ConversionFailure() {
+        // adder expects an int, we give a non‑numeric string
+        class IntAdderBean {
+            private final List<Integer> numbers = new ArrayList<>();
+            public void addNumber(Integer n) { numbers.add(n); }
+            public List<Integer> getNumbers() { return numbers; }
+        }
+
+        IntAdderBean bean = new IntAdderBean();
+        PropertySetter setter = new PropertySetter(cache, bean);
+
+        // The property name must be capitalised inside the method, so we pass "number"
+        setter.addBasicProperty("number", "notAnInt");
+
+        // The addition should have failed – list stays empty
+        assertTrue(bean.getNumbers().isEmpty());
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Tests for setComplexProperty(String, Object)
+     * --------------------------------------------------------------------- */
+
+    @Test
+    public void testSetComplexProperty_Success() {
+        ComplexPropertyBean bean = new ComplexPropertyBean();
+        PropertySetter setter = new PropertySetter(cache, bean);
+        Child child = new Child("c2");
+
+        setter.setComplexProperty("Child", child);
+        assertSame(child, bean.getChild());
+    }
+
+    @Test
+    public void testSetComplexProperty_WrongType() {
+        ComplexPropertyBean bean = new ComplexPropertyBean();
+        PropertySetter setter = new PropertySetter(cache, bean);
+
+        // Pass a String where a Child is expected – should be rejected without exception
+        setter.setComplexProperty("Child", "notAChild");
+        assertNull(bean.getChild());
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Tests for getClassNameViaImplicitRules(...)
+     * --------------------------------------------------------------------- */
+
+    @Test
+    public void testGetClassNameViaImplicitRules() {
+        // Prepare a registry that knows that for host class DummyHost,
+        // property "child" defaults to Child.class
+        class DummyHost {}
+
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+        registry.add(DummyHost.class, "child", Child.class);
+
+        PropertySetter setter = new PropertySetter(cache, new DummyHost());
+
+        Class<?> result = setter.getClassNameViaImplicitRules(
+                "child",
+                AggregationType.AS_COMPLEX_PROPERTY,
+                registry);
+
+        assertEquals(Child.class, result);
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Tests for auxiliary getters
+     * --------------------------------------------------------------------- */
+
+    @Test
+    public void testGetObjAndGetObjClass() {
+        SimpleBean bean = new SimpleBean();
+        PropertySetter setter = new PropertySetter(cache, bean);
+
+        assertSame(bean, setter.getObj());
+        assertEquals(SimpleBean.class, setter.getObjClass());
+    }
+}

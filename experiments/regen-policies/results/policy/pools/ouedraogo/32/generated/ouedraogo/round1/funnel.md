@@ -1,0 +1,62 @@
+# Generation funnel
+
+```json
+{
+  "group": "ouedraogo",
+  "round": "round1",
+  "files": 15,
+  "compiled": 4,
+  "methods": 208,
+  "stable_runs": 1,
+  "stable_passed": 52,
+  "duplicates": 0,
+  "kept_this_round": 52,
+  "total_kept": 52,
+  "developer_denominator": 526,
+  "ratio_to_dev": 0.09885931558935361,
+  "per_prompt": {
+    "ZSL": {
+      "files": 3,
+      "compiled": 1,
+      "methods": 34,
+      "stable": 14,
+      "duplicates": 0,
+      "kept": 14
+    },
+    "FSL": {
+      "files": 3,
+      "compiled": 1,
+      "methods": 37,
+      "stable": 17,
+      "duplicates": 0,
+      "kept": 17
+    },
+    "CoT": {
+      "files": 3,
+      "compiled": 0,
+      "methods": 45,
+      "stable": 0,
+      "duplicates": 0,
+      "kept": 0
+    },
+    "ToT": {
+      "files": 3,
+      "compiled": 1,
+      "methods": 40,
+      "stable": 15,
+      "duplicates": 0,
+      "kept": 15
+    },
+    "GToT": {
+      "files": 3,
+      "compiled": 1,
+      "methods": 52,
+      "stable": 6,
+      "duplicates": 0,
+      "kept": 6
+    }
+  },
+  "dev_unmapped_excluded": 0,
+  "notes": []
+}
+```

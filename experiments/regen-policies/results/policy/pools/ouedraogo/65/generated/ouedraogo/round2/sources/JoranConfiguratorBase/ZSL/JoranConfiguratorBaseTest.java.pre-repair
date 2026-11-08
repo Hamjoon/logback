@@ -1,0 +1,367 @@
+/****************************************************************************************
+ * JUnit‑4 test suite for {@link ch.qos.logback.core.joran.JoranConfiguratorBase}.
+ *
+ * The tests exercise every concrete method defined in JoranConfiguratorBase:
+ *
+ *   • addElementSelectorAndActionAssociations(RuleStore)
+ *   • sanityCheck(Model)  &  performCheck(SanityChecker, Model)
+ *   • setImplicitRuleSupplier(SaxEventInterpreter)
+ *   • buildModelInterpretationContext()
+ *   • getInterpretationContext()
+ *   • addModelHandlerAssociations(DefaultProcessor)
+ *
+ * The test harness uses only the public / protected API that is part of the supplied
+ * source or the dependency signatures.  No third‑party mocking frameworks are used.
+ *
+ * Author:  ChatGPT – generated for the kata
+ * Date:    2026‑11‑08
+ ****************************************************************************************/
+
+package ch.qos.logback.core.joran;
+
+import ch.qos.logback.core.joran.action.*;
+import ch.qos.logback.core.joran.conditional.*;
+import ch.qos.logback.core.joran.sanity.*;
+import ch.qos.logback.core.joran.spi.*;
+import ch.qos.logback.core.model.*;
+import ch.qos.logback.core.model.conditional.*;
+import ch.qos.logback.core.model.processor.*;
+import ch.qos.logback.core.model.processor.conditional.*;
+import ch.qos.logback.core.sift.SiftModelHandler;
+import ch.qos.logback.core.spi.*;
+
+import org.junit.Before;
+import org.junit.Test;
+import static org.junit.Assert.*;
+
+import java.util.*;
+import java.util.function.Supplier;
+
+/**
+ * Concrete subclass that makes the protected methods of
+ * {@link JoranConfiguratorBase} accessible to the test code.
+ */
+class TestJoranConfigurator extends JoranConfiguratorBase<Object> {
+
+    /* --------------------------------------------------------------------- *
+     *  Helper methods that expose the protected members for the tests.
+     * --------------------------------------------------------------------- */
+
+    /** expose {@code addElementSelectorAndActionAssociations} */
+    void invokeAddElementSelectorAndActionAssociations(RuleStore rs) {
+        addElementSelectorAndActionAssociations(rs);
+    }
+
+    /** expose {@code addModelHandlerAssociations} */
+    void invokeAddModelHandlerAssociations(DefaultProcessor dp) {
+        addModelHandlerAssociations(dp);
+    }
+
+    /** expose {@code buildModelInterpretationContext} */
+    void invokeBuildModelInterpretationContext() {
+        super.buildModelInterpretationContext();
+    }
+
+    /** expose {@code setImplicitRuleSupplier} */
+    void invokeSetImplicitRuleSupplier(SaxEventInterpreter interpreter) {
+        super.setImplicitRuleSupplier(interpreter);
+    }
+
+    /** expose {@code getInterpretationContext} */
+    SaxEventInterpretationContext exposeGetInterpretationContext() {
+        return super.getInterpretationContext();
+    }
+
+    /** expose the protected {@code context} field (from ContextAwareBase) */
+    Context exposeContext() {
+        return getContext();
+    }
+}
+
+/* ------------------------------------------------------------------------- *
+ *  Minimal implementations of library interfaces that are required for the
+ *  tests.  They are deliberately simple – they only record that a method was
+ *  invoked and provide the data needed for the assertions.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Simple {@link RuleStore} implementation that records the selectors,
+ * action suppliers and transparent path parts added by the configurator.
+ */
+class RecordingRuleStore implements RuleStore {
+
+    final List<ElementSelector> selectors = new ArrayList<>();
+    final List<Supplier<Action>> actionSuppliers = new ArrayList<>();
+    final List<String> transparentParts = new ArrayList<>();
+
+    @Override
+    public void addRule(ElementSelector elementSelector, String actionClassStr)
+            throws ClassNotFoundException {
+        // Not used in the current tests – keep it simple.
+        throw new UnsupportedOperationException("String‑based rule not needed");
+    }
+
+    @Override
+    public void addRule(ElementSelector elementSelector, Supplier<Action> actionSupplier) {
+        selectors.add(elementSelector);
+        actionSuppliers.add(actionSupplier);
+    }
+
+    @Override
+    public Supplier<Action> matchActions(ElementPath elementPath) {
+        throw new UnsupportedOperationException("Not required for this test");
+    }
+
+    @Override
+    public void addTransparentPathPart(String pathPart) {
+        transparentParts.add(pathPart);
+    }
+
+    @Override
+    public void addPathPathMapping(String originalName, String modifiedName) {
+        throw new UnsupportedOperationException("Not required for this test");
+    }
+}
+
+/**
+ * A {@link SanityChecker} that also implements {@link ContextAware}.  It
+ * records whether {@code setContext(..)} and {@code check(..)} have been
+ * called.
+ */
+class TestSanityChecker implements SanityChecker, ContextAware {
+
+    private Context context;
+    boolean checkInvoked = false;
+    boolean setContextInvoked = false;
+
+    @Override
+    public void check(Model model) {
+        checkInvoked = true;
+    }
+
+    /* ----------- ContextAware contract ----------------------------------- */
+
+    @Override
+    public void setContext(Context context) {
+        this.context = context;
+        setContextInvoked = true;
+    }
+
+    @Override
+    public Context getContext() {
+        return context;
+    }
+
+    @Override
+    public void addStatus(Status status) { /* no‑op */ }
+
+    @Override
+    public void addInfo(String msg) { /* no‑op */ }
+
+    @Override
+    public void addInfo(String msg, Throwable ex) { /* no‑op */ }
+
+    @Override
+    public void addWarn(String msg) { /* no‑op */ }
+
+    @Override
+    public void addWarn(String msg, Throwable ex) { /* no‑op */ }
+
+    @Override
+    public void addError(String msg) { /* no‑op */ }
+
+    @Override
+    public void addError(String msg, Throwable ex) { /* no‑op */ }
+}
+
+/**
+ * Minimal {@link Context} implementation – all methods are no‑ops or return
+ * {@code null}.  It is sufficient for the configurator to hold a reference.
+ */
+class DummyContext implements Context {
+
+    @Override public String getName() { return null; }
+    @Override public void setName(String name) { }
+    @Override public Object getObject(String key) { return null; }
+    @Override public void putObject(String key, Object value) { }
+    @Override public void addProperty(String key, String value) { }
+    @Override public String getProperty(String key) { return null; }
+    @Override public Map<String, String> getCopyOfPropertyMap() { return Collections.emptyMap(); }
+    @Override public void addStatus(Status status) { }
+    @Override public void addInfo(String msg) { }
+    @Override public void addInfo(String msg, Throwable ex) { }
+    @Override public void addWarn(String msg) { }
+    @Override public void addWarn(String msg, Throwable ex) { }
+    @Override public void addError(String msg) { }
+    @Override public void addError(String msg, Throwable ex) { }
+    @Override public void addListener(ContextListener listener) { }
+    @Override public void removeListener(ContextListener listener) { }
+    @Override public List<Status> getStatusManager() { return Collections.emptyList(); }
+    @Override public void reset() { }
+}
+
+/**
+ * Subclass of {@link SaxEventInterpreter} that captures the supplier passed
+ * to {@code setImplicitActionSupplier(...)}.
+ */
+class CapturingSaxEventInterpreter extends SaxEventInterpreter {
+
+    Supplier<Action> capturedSupplier = null;
+
+    public CapturingSaxEventInterpreter(Context context,
+                                         RuleStore rs,
+                                         ElementPath initialElementPath,
+                                         List<SaxEvent> saxEvents) {
+        super(context, rs, initialElementPath, saxEvents);
+    }
+
+    @Override
+    public void setImplicitActionSupplier(Supplier<Action> actionSupplier) {
+        this.capturedSupplier = actionSupplier;
+        super.setImplicitActionSupplier(actionSupplier);
+    }
+
+    Supplier<Action> getCapturedSupplier() {
+        return capturedSupplier;
+    }
+}
+
+/* ------------------------------------------------------------------------- *
+ *  The actual test class.
+ * ------------------------------------------------------------------------- */
+public class JoranConfiguratorBaseTest {
+
+    private TestJoranConfigurator configurator;
+    private DummyContext dummyContext;
+
+    @Before
+    public void setUp() {
+        configurator = new TestJoranConfigurator();
+        dummyContext = new DummyContext();
+        configurator.setContext(dummyContext);
+    }
+
+    /* --------------------------------------------------------------- *
+     *  1. addElementSelectorAndActionAssociations
+     * --------------------------------------------------------------- */
+    @Test
+    public void testAddElementSelectorAndActionAssociations() {
+        RecordingRuleStore ruleStore = new RecordingRuleStore();
+
+        configurator.invokeAddElementSelectorAndActionAssociations(ruleStore);
+
+        // Verify the expected number of rules (the method adds 31 rules)
+        // The exact number is derived from the source – any change in the
+        // source will be reflected by a test failure.
+        assertEquals("Number of selectors added", 31, ruleStore.selectors.size());
+
+        // Verify that the transparent path parts are exactly those required
+        // for if/then/else and sift.
+        List<String> expectedTransparentParts = Arrays.asList("if", "then", "else", "sift");
+        assertEquals("Transparent path parts", expectedTransparentParts, ruleStore.transparentParts);
+    }
+
+    /* --------------------------------------------------------------- *
+     *  2. sanityCheck & performCheck
+     * --------------------------------------------------------------- */
+    @Test
+    public void testPerformCheckSetsContextAndInvokesCheck() {
+        TestSanityChecker checker = new TestSanityChecker();
+        Model dummyModel = new Model(); // simple concrete model instance
+
+        configurator.performCheck(checker, dummyModel);
+
+        assertTrue("Context should be set on the sanity checker", checker.setContextInvoked);
+        assertSame("The context set must be the configurator's context",
+                dummyContext, checker.getContext());
+
+        assertTrue("check(...) must have been invoked", checker.checkInvoked);
+    }
+
+    @Test
+    public void testSanityCheckUsesAppenderWithinAppenderSanityChecker() {
+        // The real sanity checker is AppenderWithinAppenderSanityChecker.
+        // We simply ensure that calling sanityCheck does not throw.
+        Model topModel = new Model();
+        configurator.sanityCheck(topModel);
+        // No exception → test passes
+    }
+
+    /* --------------------------------------------------------------- *
+     *  3. setImplicitRuleSupplier
+     * --------------------------------------------------------------- */
+    @Test
+    public void testSetImplicitRuleSupplierAssignsCorrectSupplier() {
+        // Build a dummy interpreter – the constructor arguments are not used
+        // by the method under test.
+        CapturingSaxEventInterpreter interpreter =
+                new CapturingSaxEventInterpreter(dummyContext,
+                                                new RecordingRuleStore(),
+                                                new ElementPath(),
+                                                Collections.emptyList());
+
+        configurator.invokeSetImplicitRuleSupplier(interpreter);
+
+        Supplier<Action> supplier = interpreter.getCapturedSupplier();
+        assertNotNull("Supplier must have been captured", supplier);
+
+        // The supplier should create an instance of ImplicitModelAction
+        Action action = supplier.get();
+        assertTrue("Supplier must produce ImplicitModelAction",
+                action instanceof ImplicitModelAction);
+    }
+
+    /* --------------------------------------------------------------- *
+     *  4. buildModelInterpretationContext & getInterpretationContext
+     * --------------------------------------------------------------- */
+    @Test
+    public void testBuildModelInterpretationContextCreatesInterpretationContext() {
+        // The protected method is invoked via the public wrapper.
+        configurator.invokeBuildModelInterpretationContext();
+
+        // After the call the configurator must have a non‑null
+        // SaxEventInterpreter and, consequently, a non‑null interpretation
+        // context.
+        SaxEventInterpretationContext ctx = configurator.exposeGetInterpretationContext();
+        assertNotNull("Interpretation context must be created", ctx);
+    }
+
+    @Test
+    public void testGetInterpretationContextReturnsSameInstance() {
+        // First, force creation of the interpreter.
+        configurator.invokeBuildModelInterpretationContext();
+
+        SaxEventInterpretationContext ctx1 = configurator.exposeGetInterpretationContext();
+        SaxEventInterpretationContext ctx2 = configurator.getInterpretationContext();
+
+        assertSame("Both calls must return the same instance", ctx1, ctx2);
+    }
+
+    /* --------------------------------------------------------------- *
+     *  5. addModelHandlerAssociations
+     * --------------------------------------------------------------- */
+    @Test
+    public void testAddModelHandlerAssociationsRegistersHandlers() throws Exception {
+        // DefaultProcessor is a concrete class; we can inspect its private
+        // handler map via reflection.
+        DefaultProcessor processor = new DefaultProcessor(dummyContext,
+                configurator.getModelInterpretationContext());
+
+        configurator.invokeAddModelHandlerAssociations(processor);
+
+        // The handler map is stored in a private field called 'modelHandlerMap'.
+        // Use reflection to verify that a few expected model classes are present.
+        java.lang.reflect.Field mapField = DefaultProcessor.class.getDeclaredField("modelHandlerMap");
+        mapField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Class<?>, ?> handlerMap = (Map<Class<?>, ?>) mapField.get(processor);
+
+        // Verify that at least the ImportModel and IfModel handlers have been added.
+        assertTrue("ImportModel handler must be registered",
+                handlerMap.containsKey(ImportModel.class));
+        assertTrue("IfModel handler must be registered",
+                handlerMap.containsKey(IfModel.class));
+        assertTrue("SiftModel handler must be registered",
+                handlerMap.containsKey(SiftModel.class));
+    }
+}

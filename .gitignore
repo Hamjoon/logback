@@ -15,3 +15,49 @@ logback-classic/jdbc:hsqldb:mem:test.script
 cobertura.ser
 # ignore files with pound characters
 \#*\#
+
+# Claude/Codex working documents (not published)
+.local/
+
+# Experiment folders: publish only the configuration, summary tables, population
+# definitions and kept generated test sources. Raw records, build logs, tool state
+# and scratch stay local and go to the Drive archive (survival archive).
+experiments/**
+!experiments/*/
+!experiments/*/experiment.yaml
+!experiments/*/README.md
+!experiments/*/results/
+!experiments/*/results/*.csv
+!experiments/*/results/*.md
+!experiments/*/results/final-summary.json
+!experiments/*/results/policy/
+!experiments/*/results/policy/*.md
+!experiments/*/results/policy/*.csv
+!experiments/*/results/policy/*.svg
+!experiments/*/results/policy/none/
+!experiments/*/results/policy/release-reset/
+!experiments/*/results/policy/half-reset/
+!experiments/*/results/policy/half-fill/
+!experiments/*/results/policy/*/*.csv
+!experiments/*/results/policy/*/*.md
+!experiments/*/population/
+!experiments/*/population/scope.md
+!experiments/*/dev/
+!experiments/*/dev/dev-scope-denominator.csv
+!experiments/*/generated/
+!experiments/*/generated/*/
+!experiments/*/generated/*/round*/
+!experiments/*/generated/*/round*/funnel.md
+!experiments/*/generated/*/round*/sources/
+!experiments/*/generated/*/round*/sources/**
+!experiments/*/results/policy/pools/
+!experiments/*/results/policy/pools/ktester/
+!experiments/*/results/policy/pools/ouedraogo/
+!experiments/*/results/policy/pools/*/*/
+!experiments/*/results/policy/pools/*/*/funnel.json
+!experiments/*/results/policy/pools/*/*/generated/
+!experiments/*/results/policy/pools/*/*/generated/*/
+!experiments/*/results/policy/pools/*/*/generated/*/round*/
+!experiments/*/results/policy/pools/*/*/generated/*/round*/funnel.md
+!experiments/*/results/policy/pools/*/*/generated/*/round*/sources/
+!experiments/*/results/policy/pools/*/*/generated/*/round*/sources/**

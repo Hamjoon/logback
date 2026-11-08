@@ -1,0 +1,383 @@
+package ch.qos.logback.core.joran.util;
+
+import static org.junit.Assert.*;
+
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
+import java.util.Collections;
+
+import org.junit.Before;
+import org.junit.Test;
+
+import ch.qos.logback.core.joran.spi.DefaultClass;
+import ch.qos.logback.core.joran.spi.DefaultNestedComponentRegistry;
+import ch.qos.logback.core.util.AggregationType;
+import ch.qos.logback.core.util.PropertySetterException;
+
+/**
+ * Comprehensive JUnit‑4 test suite for {@link PropertySetter}.
+ *
+ * The tests cover:
+ * <ul>
+ *   <li>All public methods (basic happy‑path usage)</li>
+ *   <li>Edge‑cases such as null values, missing setters/adders, conversion errors</li>
+ *   <li>Exception handling paths inside the private helper methods</li>
+ *   <li>Implicit class‑resolution logic (registry, @DefaultClass, concrete type)</li>
+ * </ul>
+ *
+ * The test uses real bean classes that exercise the various
+ * reflection‑based branches of {@code PropertySetter}. No mocking
+ * frameworks are used – only the public API of the Logback classes
+ * that are available in the source snippet.
+ */
+public class PropertySetterTest {
+
+    /* --------------------------------------------------------------------- */
+    /* Helper bean classes used throughout the tests                         */
+    /* --------------------------------------------------------------------- */
+
+    /** Simple component used as a complex property in the tests. */
+    public static class SimpleComponent {
+        private String value;
+
+        public SimpleComponent() {}
+
+        public SimpleComponent(String value) {
+            this.value = value;
+        }
+
+        public String getValue() {
+            return value;
+        }
+    }
+
+    /** Bean with a mixture of simple setters, an adder and annotated methods. */
+    public static class TestBean {
+
+        private String name;
+        private int age;
+        private boolean male;
+        private java.util.List<String> items = new java.util.ArrayList<>();
+        private SimpleComponent component;
+
+        /* ----- simple setters ------------------------------------------------ */
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public void setAge(int age) {
+            this.age = age;
+        }
+
+        public void setMale(boolean male) {
+            this.male = male;
+        }
+
+        /* ----- adder (collection) ------------------------------------------- */
+
+        public void addItem(String item) {
+            items.add(item);
+        }
+
+        public java.util.List<String> getItems() {
+            return items;
+        }
+
+        /* ----- complex setter (no annotation) ------------------------------- */
+
+        public void setComponent(SimpleComponent component) {
+            this.component = component;
+        }
+
+        public SimpleComponent getComponent() {
+            return component;
+        }
+
+        /* ----- adder with @DefaultClass annotation --------------------------- */
+
+        @DefaultClass(DefaultComponent.class)
+        public void addComponent(DefaultComponent component) {
+            // just a dummy method – the test only cares that the annotation exists
+        }
+    }
+
+    /** Component used together with the @DefaultClass annotation. */
+    public static class DefaultComponent extends SimpleComponent {
+        public DefaultComponent() {
+            super("default");
+        }
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* Test fixtures                                                         */
+    /* --------------------------------------------------------------------- */
+
+    private BeanDescriptionCache cache;
+    private TestBean bean;
+    private PropertySetter setter;
+
+    @Before
+    public void setUp() {
+        // Context is not required for the parts we test – passing null is allowed.
+        cache = new BeanDescriptionCache(null);
+        bean = new TestBean();
+        setter = new PropertySetter(cache, bean);
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 1. Public method list (for documentation)                             */
+    /* --------------------------------------------------------------------- */
+
+    /**
+     * Helper that documents the public API of {@link PropertySetter}.
+     * Not a test – it simply fails if the signature changes.
+     */
+    @Test
+    public void publicMethodSignaturesShouldMatchExpectation() throws Exception {
+        Method[] methods = PropertySetter.class.getDeclaredMethods();
+        java.util.Set<String> signatures = new java.util.HashSet<>();
+        for (Method m : methods) {
+            if (java.lang.reflect.Modifier.isPublic(m.getModifiers())) {
+                signatures.add(m.getName() + java.util.Arrays.toString(m.getParameterTypes()));
+            }
+        }
+
+        java.util.Set<String> expected = java.util.Collections.unmodifiableSet(
+                java.util.Set.of(
+                        "setProperty[interface java.lang.String,interface java.lang.String]",
+                        "computeAggregationType[interface java.lang.String]",
+                        "getObjClass[]",
+                        "addComplexProperty[interface java.lang.String,interface java.lang.Object]",
+                        "addBasicProperty[interface java.lang.String,interface java.lang.String]",
+                        "setComplexProperty[interface java.lang.String,interface java.lang.Object]",
+                        "getObj[]",
+                        "getClassNameViaImplicitRules[interface java.lang.String,interface ch.qos.logback.core.util.AggregationType,interface ch.qos.logback.core.joran.spi.DefaultNestedComponentRegistry]"
+                ));
+
+        assertEquals("Public method signatures have changed", expected, signatures);
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 2. Basic happy‑path tests for each public method                       */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void setPropertyShouldSetSimpleString() {
+        setter.setProperty("name", "John");
+        assertEquals("John", bean.name);
+    }
+
+    @Test
+    public void setPropertyShouldConvertAndSetInt() {
+        setter.setProperty("age", "42");
+        assertEquals(42, bean.age);
+    }
+
+    @Test
+    public void setPropertyShouldConvertAndSetBoolean() {
+        setter.setProperty("male", "true");
+        assertTrue(bean.male);
+    }
+
+    @Test
+    public void computeAggregationTypeShouldDetectAdderCollection() {
+        // "item" corresponds to addItem(String)
+        AggregationType type = setter.computeAggregationType("item");
+        assertEquals(AggregationType.AS_BASIC_PROPERTY_COLLECTION, type);
+    }
+
+    @Test
+    public void computeAggregationTypeShouldDetectSimpleSetter() {
+        // "age" corresponds to setAge(int)
+        AggregationType type = setter.computeAggregationType("age");
+        assertEquals(AggregationType.AS_BASIC_PROPERTY, type);
+    }
+
+    @Test
+    public void getObjClassShouldReturnUnderlyingClass() {
+        assertEquals(TestBean.class, setter.getObjClass());
+    }
+
+    @Test
+    public void addComplexPropertyShouldInvokeAdderWhenTypeMatches() {
+        DefaultComponent dc = new DefaultComponent();
+        setter.addComplexProperty("Component", dc); // maps to addComponent(DefaultComponent)
+        // No direct observable state – we only verify that no warning/error was logged.
+        // The absence of an exception is considered a success.
+    }
+
+    @Test
+    public void addBasicPropertyShouldAddToCollection() {
+        setter.addBasicProperty("item", "first");
+        assertEquals(java.util.Collections.singletonList("first"), bean.getItems());
+    }
+
+    @Test
+    public void setComplexPropertyShouldInvokeSetterWhenTypeMatches() {
+        SimpleComponent comp = new SimpleComponent("hello");
+        setter.setComplexProperty("component", comp);
+        assertSame(comp, bean.getComponent());
+    }
+
+    @Test
+    public void getObjShouldReturnOriginalObject() {
+        assertSame(bean, setter.getObj());
+    }
+
+    @Test
+    public void getClassNameViaImplicitRules_RegistryTakesPrecedence() {
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+        registry.add(TestBean.class, "dummy", String.class);
+        Class<?> result = setter.getClassNameViaImplicitRules("dummy",
+                AggregationType.AS_BASIC_PROPERTY, registry);
+        assertEquals(String.class, result);
+    }
+
+    @Test
+    public void getClassNameViaImplicitRules_AnnotationProvidesDefault() {
+        // No registry entry – the adder for "component" is annotated with @DefaultClass(DefaultComponent)
+        Class<?> result = setter.getClassNameViaImplicitRules("Component",
+                AggregationType.AS_COMPLEX_PROPERTY_COLLECTION,
+                new DefaultNestedComponentRegistry());
+        assertEquals(DefaultComponent.class, result);
+    }
+
+    @Test
+    public void getClassNameViaImplicitRules_ConcreteInstantiableReturned() {
+        // No registry entry, no annotation, but the setter for "component" takes SimpleComponent
+        Class<?> result = setter.getClassNameViaImplicitRules("component",
+                AggregationType.AS_COMPLEX_PROPERTY,
+                new DefaultNestedComponentRegistry());
+        assertEquals(SimpleComponent.class, result);
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 3. Edge‑case and exception handling tests                              */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void setPropertyShouldIgnoreNullValue() {
+        // Should simply return without throwing
+        setter.setProperty("name", null);
+        assertNull(bean.name);
+    }
+
+    @Test
+    public void setPropertyShouldWarnWhenNoSetterFound() {
+        // No setter called – we just ensure that no exception is thrown.
+        setter.setProperty("nonExisting", "value");
+        // No observable state change; test passes if no exception.
+    }
+
+    @Test
+    public void setPropertyShouldThrowPropertySetterExceptionOnBadConversion() {
+        // setAge expects an int; passing a non‑numeric string triggers conversion failure.
+        try {
+            setter.setProperty("age", "not-a-number");
+            fail("Expected PropertySetterException wrapped inside a warning – no exception should escape");
+        } catch (Exception e) {
+            // PropertySetter catches the exception and logs a warning, so it must NOT escape.
+            // If we reach here, something is wrong.
+            fail("Exception leaked from setProperty: " + e);
+        }
+        // Verify that the field was not modified.
+        assertEquals(0, bean.age);
+    }
+
+    @Test
+    public void addComplexPropertyShouldDoNothingWhenAdderMissing() {
+        // "Missing" has no adder method.
+        setter.addComplexProperty("Missing", new SimpleComponent());
+        // No exception – method should simply log an error.
+    }
+
+    @Test
+    public void addComplexPropertyShouldRejectWrongParameterType() {
+        // addComponent expects DefaultComponent – passing SimpleComponent should fail sanity check.
+        setter.addComplexProperty("Component", new SimpleComponent());
+        // No exception – method logs an error and returns.
+    }
+
+    @Test
+    public void addBasicPropertyShouldIgnoreNullString() {
+        setter.addBasicProperty("item", null);
+        assertTrue(bean.getItems().isEmpty());
+    }
+
+    @Test
+    public void addBasicPropertyShouldLogErrorWhenAdderMissing() {
+        // No adder for "nonexistent"
+        setter.addBasicProperty("nonexistent", "value");
+        // No exception – just a logged error.
+    }
+
+    @Test
+    public void addBasicPropertyShouldLogErrorOnConversionFailure() {
+        // adder expects String – conversion never fails, so we need a setter that expects a non‑String type.
+        // We'll use the "age" property via the adder path (there is no adder, so we create a synthetic one).
+        // Instead, we test the private conversion path indirectly by calling setProperty with a bad value.
+        try {
+            setter.setProperty("age", "abc");
+        } catch (Exception e) {
+            fail("Exception should be caught inside setProperty");
+        }
+        // Age must remain unchanged.
+        assertEquals(0, bean.age);
+    }
+
+    @Test
+    public void setComplexPropertyShouldWarnWhenSetterMissing() {
+        setter.setComplexProperty("nonExisting", new SimpleComponent());
+        // No exception – just a warning.
+    }
+
+    @Test
+    public void setComplexPropertyShouldRejectWrongParameterType() {
+        // setComponent expects SimpleComponent – passing DefaultComponent (subclass) is OK,
+        // passing String is not.
+        setter.setComplexProperty("component", "not-a-component");
+        // No exception – error logged.
+        assertNull(bean.getComponent());
+    }
+
+    @Test
+    public void getClassNameViaImplicitRules_ShouldReturnNullWhenNothingMatches() {
+        Class<?> result = setter.getClassNameViaImplicitRules("unknown",
+                AggregationType.AS_BASIC_PROPERTY,
+                new DefaultNestedComponentRegistry());
+        assertNull(result);
+    }
+
+    @Test
+    public void getRelevantMethod_ShouldThrowIllegalStateForUnsupportedAggregation() {
+        try {
+            // Use reflection to call the package‑private method.
+            Method m = PropertySetter.class.getDeclaredMethod("getRelevantMethod", String.class,
+                    AggregationType.class);
+            m.setAccessible(true);
+            m.invoke(setter, "name", AggregationType.AS_BASIC_PROPERTY);
+            fail("Expected IllegalStateException");
+        } catch (Exception e) {
+            assertTrue(e.getCause() instanceof IllegalStateException);
+        }
+    }
+
+    @Test
+    public void getAnnotation_ShouldReturnNullWhenMethodIsNull() {
+        try {
+            Method m = PropertySetter.class.getDeclaredMethod("getAnnotation", String.class,
+                    Class.class, Method.class);
+            m.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            Annotation result = (Annotation) m.invoke(setter, "any", DefaultClass.class, null);
+            assertNull(result);
+        } catch (Exception e) {
+            fail("Reflection error: " + e);
+        }
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* Helper methods (none needed – all logic exercised via public API)     */
+    /* --------------------------------------------------------------------- */
+}

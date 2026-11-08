@@ -1,0 +1,404 @@
+package ch.qos.logback.core.joran;
+import ch.qos.logback.core.model.conditional.ElseModel;
+import ch.qos.logback.core.model.conditional.IfModel;
+import ch.qos.logback.core.model.conditional.ThenModel;
+
+
+import ch.qos.logback.core.joran.action.*;
+import ch.qos.logback.core.joran.conditional.*;
+import ch.qos.logback.core.joran.sanity.AppenderWithinAppenderSanityChecker;
+import ch.qos.logback.core.joran.sanity.SanityChecker;
+import ch.qos.logback.core.joran.spi.*;
+import ch.qos.logback.core.model.*;
+import ch.qos.logback.core.model.processor.*;
+import ch.qos.logback.core.model.processor.conditional.*;
+import ch.qos.logback.core.sift.SiftModelHandler;
+import ch.qos.logback.core.spi.ContextAware;
+import ch.qos.logback.core.spi.ContextAwareBase;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.util.*;
+import java.util.function.Supplier;
+
+import static org.junit.Assert.*;
+
+/**
+ * Comprehensive JUnit‑4 test suite for {@link JoranConfiguratorBase}.
+ *
+ * The tests cover every public / protected method that contains logic
+ * inside {@code JoranConfiguratorBase}.  All collaborators are real
+ * objects created with the constructors that appear in the supplied API
+ * signatures – no mocking frameworks are used.
+ */
+public class JoranConfiguratorBaseTest {
+
+    private TestJoranConfigurator configurator;
+
+    @Before
+    public void setUp() {
+        configurator = new TestJoranConfigurator();
+    }
+
+    /**
+     * Concrete (non‑abstract) subclass that simply inherits the behaviour
+     * of {@link JoranConfiguratorBase}.  No additional code is required.
+     */
+    private static class TestJoranConfigurator extends JoranConfiguratorBase<Object> {
+        // all abstract methods are already implemented in the base class
+    }
+
+    /* --------------------------------------------------------------------- */
+    /*  Helper classes used by the tests                                    */
+    /* --------------------------------------------------------------------- */
+
+    /** Simple {@link RuleStore} implementation that records every call. */
+    private static class RecordingRuleStore implements RuleStore {
+
+        static class RuleEntry {
+            final ElementSelector selector;
+            final Supplier<Action> supplier;
+
+            RuleEntry(ElementSelector selector, Supplier<Action> supplier) {
+                this.selector = selector;
+                this.supplier = supplier;
+            }
+        }
+
+        final List<RuleEntry> rules = new ArrayList<>();
+        final List<String> transparentParts = new ArrayList<>();
+
+        @Override
+        public void addRule(ElementSelector elementSelector, String actionClassStr) {
+            // not used by the configurator – ignore
+        }
+
+        @Override
+        public void addRule(ElementSelector elementSelector, Supplier<Action> actionSupplier) {
+            rules.add(new RuleEntry(elementSelector, actionSupplier));
+        }
+
+        @Override
+        public Supplier<Action> matchActions(ElementPath elementPath) {
+            return null; // not needed for the tests
+        }
+
+        @Override
+        public void addTransparentPathPart(String pathPart) {
+            transparentParts.add(pathPart);
+        }
+
+        @Override
+        public void addPathPathMapping(String originalName, String modifiedName) {
+            // not required for the tests
+        }
+    }
+
+    /** Minimal {@link SanityChecker} that also implements {@link ContextAware}. */
+    private static class DummySanityChecker implements SanityChecker, ContextAware {
+
+        boolean checkCalled = false;
+        ContextAwareBase contextAware = new ContextAwareBase();
+
+        @Override
+        public void setContext(ch.qos.logback.core.Context context) {
+            contextAware.setContext(context);
+        }
+
+        @Override
+        public ch.qos.logback.core.Context getContext() {
+            return contextAware.getContext();
+        }
+
+        @Override
+        public void addStatus(Status status) {
+            contextAware.addStatus(status);
+        }
+
+        @Override
+        public void addInfo(String msg) {
+            contextAware.addInfo(msg);
+        }
+
+        @Override
+        public void addInfo(String msg, Throwable ex) {
+            contextAware.addInfo(msg, ex);
+        }
+
+        @Override
+        public void addWarn(String msg) {
+            contextAware.addWarn(msg);
+        }
+
+        @Override
+        public void addWarn(String msg, Throwable ex) {
+            contextAware.addWarn(msg, ex);
+        }
+
+        @Override
+        public void addError(String msg) {
+            contextAware.addError(msg);
+        }
+
+        @Override
+        public void addError(String msg, Throwable ex) {
+            contextAware.addError(msg, ex);
+        }
+
+        @Override
+        public void check(Model model) {
+            checkCalled = true;
+        }
+    }
+
+    /** {@link DefaultProcessor} subclass that records every handler registration. */
+    private static class RecordingProcessor extends DefaultProcessor {
+
+        final List<Class<? extends Model>> registeredModelClasses = new ArrayList<>();
+
+        public RecordingProcessor(ch.qos.logback.core.Context context,
+                                  ModelInterpretationContext mic) {
+            super(context, mic);
+        }
+
+        @Override
+        public void addHandler(Class<? extends Model> modelClass,
+                               ModelHandlerFactoryMethod modelFactoryMethod) {
+            registeredModelClasses.add(modelClass);
+            // delegate to super so that the internal registration still works
+            super.addHandler(modelClass, modelFactoryMethod);
+        }
+    }
+
+    /** Very small {@link SaxEventInterpreter} that only exposes the implicit supplier. */
+    private static class StubInterpreter extends SaxEventInterpreter {
+
+        private Supplier<Action> implicitSupplier;
+
+        public StubInterpreter() {
+            super(null, null, null, Collections.emptyList());
+        }
+
+        @Override
+        public void setImplicitActionSupplier(Supplier<Action> actionSupplier) {
+            this.implicitSupplier = actionSupplier;
+        }
+
+        public Supplier<Action> getImplicitActionSupplier() {
+            return implicitSupplier;
+        }
+
+        @Override
+        public SaxEventInterpretationContext getSaxEventInterpretationContext() {
+            // not needed for the current test
+            return null;
+        }
+    }
+
+    /* --------------------------------------------------------------------- */
+    /*  1. addElementSelectorAndActionAssociations                            */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testAddElementSelectorAndActionAssociations() {
+        RecordingRuleStore ruleStore = new RecordingRuleStore();
+
+        // invoke the method under test
+        configurator.addElementSelectorAndActionAssociations(ruleStore);
+
+        // -------------------------------------------------
+        // a) verify that transparent path parts are registered
+        // -------------------------------------------------
+        List<String> expectedTransparent = Arrays.asList("if", "then", "else", "sift");
+        for (String part : expectedTransparent) {
+            assertTrue("transparent part missing: " + part,
+                    ruleStore.transparentParts.contains(part));
+        }
+
+        // -------------------------------------------------
+        // b) verify that a rule for */if exists and creates an IfAction
+        // -------------------------------------------------
+        boolean ifRuleFound = false;
+        for (RecordingRuleStore.RuleEntry entry : ruleStore.rules) {
+            if (entry.selector.toString().contains("*/if")) {
+                ifRuleFound = true;
+                Action action = entry.supplier.get();
+                assertTrue("Supplier for */if must create IfAction",
+                        action instanceof IfAction);
+                break;
+            }
+        }
+        assertTrue("Rule for */if not found", ifRuleFound);
+    }
+
+    /* --------------------------------------------------------------------- */
+    /*  2. sanityCheck (uses the real AppenderWithinAppenderSanityChecker)   */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testSanityCheckDoesNotThrow() {
+        Model model = new Model(); // a simple, empty model
+        // The method should simply delegate to the sanity checker – we only
+        // verify that no exception propagates.
+        configurator.sanityCheck(model);
+    }
+
+    /* --------------------------------------------------------------------- */
+    /*  3. performCheck – verifies context propagation and invocation       */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testPerformCheckSetsContextAndInvokesCheck() throws Exception {
+        // expose the protected method via reflection
+        java.lang.reflect.Method m = JoranConfiguratorBase.class
+                .getDeclaredMethod("performCheck", SanityChecker.class, Model.class);
+        m.setAccessible(true);
+
+        DummySanityChecker checker = new DummySanityChecker();
+        Model model = new Model();
+
+        // call the protected method
+        m.invoke(configurator, checker, model);
+
+        assertTrue("SanityChecker.check(...) should have been called", checker.checkCalled);
+        // the configurator's context is null (we never set one), therefore the
+        // checker should have received a null context as well.
+        assertNull("Context passed to the checker must be null", checker.getContext());
+    }
+
+    /* --------------------------------------------------------------------- */
+    /*  4. setImplicitRuleSupplier – supplier must be non‑null and create   */
+    /*     an ImplicitModelAction                                             */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testSetImplicitRuleSupplier() {
+        StubInterpreter interpreter = new StubInterpreter();
+
+        configurator.setImplicitRuleSupplier(interpreter);
+
+        Supplier<Action> supplier = interpreter.getImplicitActionSupplier();
+        assertNotNull("Implicit action supplier must be set", supplier);
+
+        Action action = supplier.get();
+        assertNotNull("Supplier must create an Action instance", action);
+        assertEquals("The supplier must create an ImplicitModelAction",
+                ImplicitModelAction.class, action.getClass());
+    }
+
+    /* --------------------------------------------------------------------- */
+    /*  5. buildModelInterpretationContext – ensures super method runs and   */
+    /*     that createAppenderBags() is called                             */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testBuildModelInterpretationContextInvokesCreateAppenderBags()
+            throws Exception {
+
+        // Use reflection to replace the protected field 'modelInterpretationContext'
+        // with a subclass that records the invocation.
+        java.lang.reflect.Field micField = GenericXMLConfigurator.class
+                .getDeclaredField("modelInterpretationContext");
+        micField.setAccessible(true);
+
+        // Subclass that overrides createAppenderBags()
+        class TestMIC extends ModelInterpretationContext {
+            boolean createAppenderBagsCalled = false;
+
+            public TestMIC(ch.qos.logback.core.Context context) {
+                super(context);
+            }
+
+            @Override
+            public void createAppenderBags() {
+                createAppenderBagsCalled = true;
+            }
+        }
+
+        TestMIC testMIC = new TestMIC(null);
+        micField.set(configurator, testMIC);
+
+        // invoke the method under test
+        configurator.buildModelInterpretationContext();
+
+        assertTrue("createAppenderBags() should have been called",
+                testMIC.createAppenderBagsCalled);
+    }
+
+    /* --------------------------------------------------------------------- */
+    /*  6. getInterpretationContext – returns the interpreter's context      */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testGetInterpretationContext() throws Exception {
+        // create a dummy SaxEventInterpretationContext (constructor allows nulls)
+        SaxEventInterpretationContext dummyCtx = new SaxEventInterpretationContext(null, null);
+
+        // stub interpreter that returns the dummy context
+        class SimpleInterpreter extends SaxEventInterpreter {
+            private final SaxEventInterpretationContext ctx;
+
+            SimpleInterpreter(SaxEventInterpretationContext ctx) {
+                super(null, null, null, Collections.emptyList());
+                this.ctx = ctx;
+            }
+
+            @Override
+            public SaxEventInterpretationContext getSaxEventInterpretationContext() {
+                return ctx;
+            }
+        }
+
+        SimpleInterpreter interpreter = new SimpleInterpreter(dummyCtx);
+
+        // inject the interpreter via reflection (field is protected in the superclass)
+        java.lang.reflect.Field interpreterField = GenericXMLConfigurator.class
+                .getDeclaredField("saxEventInterpreter");
+        interpreterField.setAccessible(true);
+        interpreterField.set(configurator, interpreter);
+
+        // call the method under test
+        SaxEventInterpretationContext result = configurator.getInterpretationContext();
+
+        assertSame("Returned context must be the one supplied by the interpreter",
+                dummyCtx, result);
+    }
+
+    /* --------------------------------------------------------------------- */
+    /*  7. addModelHandlerAssociations – all expected model handlers are    */
+    /*     registered                                                       */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testAddModelHandlerAssociationsRegistersAllHandlers() {
+        // a minimal context is sufficient – we use null because the processor
+        // does not touch it in the test
+        RecordingProcessor processor = new RecordingProcessor(null, null);
+
+        configurator.addModelHandlerAssociations(processor);
+
+        // the list of model classes that must be present (excerpted from the source)
+        List<Class<? extends Model>> expected = Arrays.asList(
+                ImportModel.class,
+                ShutdownHookModel.class,
+                SequenceNumberGeneratorModel.class,
+                EventEvaluatorModel.class,
+                DefineModel.class,
+                IncludeModel.class,
+                ParamModel.class,
+                PropertyModel.class,
+                TimestampModel.class,
+                StatusListenerModel.class,
+                ImplicitModel.class,
+                IfModel.class,
+                ThenModel.class,
+                ElseModel.class,
+                SiftModel.class
+        );
+
+        for (Class<? extends Model> cls : expected) {
+            assertTrue("Handler for " + cls.getSimpleName() + " should be registered",
+                    processor.registeredModelClasses.contains(cls));
+        }
+    }
+}

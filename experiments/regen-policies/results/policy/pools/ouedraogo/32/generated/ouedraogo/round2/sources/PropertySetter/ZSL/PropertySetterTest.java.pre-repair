@@ -1,0 +1,307 @@
+package ch.qos.logback.core.joran.util;
+
+import ch.qos.logback.core.joran.spi.DefaultNestedComponentRegistry;
+import ch.qos.logback.core.util.AggregationType;
+import ch.qos.logback.core.util.PropertySetterException;
+import ch.qos.logback.core.util.StringUtil;
+import org.junit.Assert;
+import org.junit.Test;
+
+import java.lang.reflect.Method;
+import java.util.*;
+
+public class PropertySetterTest {
+
+    /* --------------------------------------------------------------------- *
+     *  Helper beans used by the tests
+     * --------------------------------------------------------------------- */
+
+    public static class Child {
+        private String value;
+
+        public Child(String value) {
+            this.value = value;
+        }
+
+        public String getValue() {
+            return value;
+        }
+    }
+
+    public static class TestBean {
+        private String name;
+        private int age;
+        private boolean active;
+        private Child child;
+        private final List<String> items = new ArrayList<>();
+        private final List<Child> children = new ArrayList<>();
+
+        /* simple setters */
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public void setAge(int age) {
+            this.age = age;
+        }
+
+        public void setActive(boolean active) {
+            this.active = active;
+        }
+
+        public void setChild(Child child) {
+            this.child = child;
+        }
+
+        /* adder for basic property (String) */
+        public void addItem(String item) {
+            items.add(item);
+        }
+
+        /* adder for complex property (Child) */
+        public void addChild(Child child) {
+            children.add(child);
+        }
+
+        /* getters used by assertions */
+        public String getName() {
+            return name;
+        }
+
+        public int getAge() {
+            return age;
+        }
+
+        public boolean isActive() {
+            return active;
+        }
+
+        public Child getChild() {
+            return child;
+        }
+
+        public List<String> getItems() {
+            return items;
+        }
+
+        public List<Child> getChildren() {
+            return children;
+        }
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Minimal BeanDescriptionCache that returns a fully populated BeanDescription
+     * --------------------------------------------------------------------- */
+
+    /**
+     * The library’s {@link BeanDescription} constructor is {@code protected},
+     * therefore this test class lives in the same package and can instantiate it
+     * directly.
+     */
+    private static class TestBeanDescriptionCache extends BeanDescriptionCache {
+
+        public TestBeanDescriptionCache() {
+            super(null); // Context is not needed for the tests
+        }
+
+        @Override
+        public BeanDescription getBeanDescription(Class<?> clazz) {
+            try {
+                Map<String, Method> getters = Collections.emptyMap();
+
+                Map<String, Method> setters = new HashMap<>();
+                setters.put("name", clazz.getMethod("setName", String.class));
+                setters.put("age", clazz.getMethod("setAge", int.class));
+                setters.put("active", clazz.getMethod("setActive", boolean.class));
+                setters.put("child", clazz.getMethod("setChild", Child.class));
+
+                Map<String, Method> adders = new HashMap<>();
+                adders.put("item", clazz.getMethod("addItem", String.class));
+                adders.put("child", clazz.getMethod("addChild", Child.class));
+
+                // BeanDescription constructor is protected → we can call it here.
+                return new BeanDescription(clazz, getters, setters, adders);
+            } catch (NoSuchMethodException e) {
+                throw new IllegalStateException("Failed to build BeanDescription for test bean", e);
+            }
+        }
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Subclass of PropertySetter that records warnings / errors for verification
+     * --------------------------------------------------------------------- */
+
+    private static class RecordingPropertySetter extends PropertySetter {
+
+        private final List<String> warnings = new ArrayList<>();
+        private final List<String> errors = new ArrayList<>();
+
+        public RecordingPropertySetter(BeanDescriptionCache cache, Object obj) {
+            super(cache, obj);
+        }
+
+        @Override
+        public void addWarn(String msg) {
+            warnings.add(msg);
+        }
+
+        @Override
+        public void addWarn(String msg, Throwable ex) {
+            warnings.add(msg + " : " + ex.getMessage());
+        }
+
+        @Override
+        public void addError(String msg) {
+            errors.add(msg);
+        }
+
+        @Override
+        public void addError(String msg, Throwable ex) {
+            errors.add(msg + " : " + ex.getMessage());
+        }
+
+        public List<String> getWarnings() {
+            return warnings;
+        }
+
+        public List<String> getErrors() {
+            return errors;
+        }
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Test cases
+     * --------------------------------------------------------------------- */
+
+    @Test
+    public void testSetSimpleProperties() {
+        TestBean bean = new TestBean();
+        RecordingPropertySetter setter = new RecordingPropertySetter(new TestBeanDescriptionCache(), bean);
+
+        setter.setProperty("name", "John Doe");
+        setter.setProperty("age", "42");
+        setter.setProperty("active", "true");
+
+        Assert.assertEquals("John Doe", bean.getName());
+        Assert.assertEquals(42, bean.getAge());
+        Assert.assertTrue(bean.isActive());
+
+        // No warnings should have been generated
+        Assert.assertTrue(setter.getWarnings().isEmpty());
+    }
+
+    @Test
+    public void testSetPropertyUnknown() {
+        TestBean bean = new TestBean();
+        RecordingPropertySetter setter = new RecordingPropertySetter(new TestBeanDescriptionCache(), bean);
+
+        setter.setProperty("nonExisting", "value");
+
+        Assert.assertTrue(bean.getName() == null);
+        Assert.assertEquals(1, setter.getWarnings().size());
+        Assert.assertTrue(setter.getWarnings().get(0).contains("No setter for property [nonExisting]"));
+    }
+
+    @Test
+    public void testSetPropertyNullValueIsIgnored() {
+        TestBean bean = new TestBean();
+        RecordingPropertySetter setter = new RecordingPropertySetter(new TestBeanDescriptionCache(), bean);
+
+        setter.setProperty("name", null); // should be ignored silently
+
+        Assert.assertNull(bean.getName());
+        Assert.assertTrue(setter.getWarnings().isEmpty());
+    }
+
+    @Test
+    public void testAddBasicPropertySuccess() {
+        TestBean bean = new TestBean();
+        RecordingPropertySetter setter = new RecordingPropertySetter(new TestBeanDescriptionCache(), bean);
+
+        setter.addBasicProperty("item", "firstItem");
+
+        Assert.assertEquals(1, bean.getItems().size());
+        Assert.assertEquals("firstItem", bean.getItems().get(0));
+        Assert.assertTrue(setter.getErrors().isEmpty());
+    }
+
+    @Test
+    public void testAddBasicPropertyNoAdder() {
+        TestBean bean = new TestBean();
+        RecordingPropertySetter setter = new RecordingPropertySetter(new TestBeanDescriptionCache(), bean);
+
+        setter.addBasicProperty("unknown", "value");
+
+        Assert.assertTrue(bean.getItems().isEmpty());
+        Assert.assertEquals(1, setter.getErrors().size());
+        Assert.assertTrue(setter.getErrors().get(0).contains("No adder for property [Unknown]"));
+    }
+
+    @Test
+    public void testAddComplexPropertySuccess() {
+        TestBean bean = new TestBean();
+        RecordingPropertySetter setter = new RecordingPropertySetter(new TestBeanDescriptionCache(), bean);
+        Child child = new Child("c1");
+
+        setter.addComplexProperty("Child", child);
+
+        Assert.assertEquals(1, bean.getChildren().size());
+        Assert.assertSame(child, bean.getChildren().get(0));
+        Assert.assertTrue(setter.getErrors().isEmpty());
+    }
+
+    @Test
+    public void testSetComplexPropertySuccess() {
+        TestBean bean = new TestBean();
+        RecordingPropertySetter setter = new RecordingPropertySetter(new TestBeanDescriptionCache(), bean);
+        Child child = new Child("c2");
+
+        setter.setComplexProperty("child", child);
+
+        Assert.assertSame(child, bean.getChild());
+        Assert.assertTrue(setter.getWarnings().isEmpty());
+        Assert.assertTrue(setter.getErrors().isEmpty());
+    }
+
+    @Test
+    public void testSetComplexPropertyWrongTypeProducesError() {
+        TestBean bean = new TestBean();
+        RecordingPropertySetter setter = new RecordingPropertySetter(new TestBeanDescriptionCache(), bean);
+        String wrongObject = "I am not a Child";
+
+        setter.setComplexProperty("child", wrongObject);
+
+        // The property should NOT have been set
+        Assert.assertNull(bean.getChild());
+
+        // An error describing the type mismatch must have been recorded
+        Assert.assertEquals(1, setter.getErrors().size());
+        Assert.assertTrue(setter.getErrors().get(0).contains("is not assignable"));
+    }
+
+    @Test
+    public void testComputeAggregationTypeDelegates() {
+        TestBean bean = new TestBean();
+        RecordingPropertySetter setter = new RecordingPropertySetter(new TestBeanDescriptionCache(), bean);
+
+        // The actual value depends on AggregationAssessor’s implementation,
+        // but the call must not throw and must return a non‑null value.
+        AggregationType type = setter.computeAggregationType("name");
+        Assert.assertNotNull(type);
+    }
+
+    @Test
+    public void testGetClassNameViaImplicitRulesDelegates() {
+        TestBean bean = new TestBean();
+        RecordingPropertySetter setter = new RecordingPropertySetter(new TestBeanDescriptionCache(), bean);
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+
+        // The method is delegated; we only assert that it does not throw.
+        Class<?> result = setter.getClassNameViaImplicitRules("child",
+                AggregationType.AS_COMPLEX_PROPERTY,
+                registry);
+        // The return may be null if no rule matches – both are acceptable.
+        // The important part is that the call succeeded.
+        Assert.assertTrue(result == null || result.isAssignableFrom(Child.class));
+    }
+}

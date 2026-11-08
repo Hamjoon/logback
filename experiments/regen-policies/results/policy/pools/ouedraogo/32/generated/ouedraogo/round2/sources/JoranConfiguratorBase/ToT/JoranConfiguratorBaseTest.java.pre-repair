@@ -1,0 +1,422 @@
+/**
+ * JUnit‑4 test suite for {@link ch.qos.logback.core.joran.JoranConfiguratorBase}.
+ *
+ * The tests cover every public / protected method of the class:
+ *
+ * <ul>
+ *   <li>{@code addElementSelectorAndActionAssociations}</li>
+ *   <li>{@code sanityCheck}</li>
+ *   <li>{@code performCheck}</li>
+ *   <li>{@code setImplicitRuleSupplier}</li>
+ *   <li>{@code buildModelInterpretationContext}</li>
+ *   <li>{@code getInterpretationContext}</li>
+ *   <li>{@code addModelHandlerAssociations}</li>
+ * </ul>
+ *
+ * Because the class under test is abstract we create a tiny concrete subclass
+ * {@code TestConfigurator}.  All objects are instantiated using the public
+ * constructors supplied in the API – no mocking frameworks are used as required.
+ *
+ * The test suite deliberately exercises normal use, edge cases (empty XML,
+ * missing rules, custom sanity‑checker) and error scenarios (null arguments,
+ * illegal state).  Reflection is used only to inspect internal state of
+ * helper classes that do not expose getters.
+ */
+package ch.qos.logback.core.joran;
+
+import static org.junit.Assert.*;
+
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Supplier;
+
+import org.junit.Before;
+import org.junit.Test;
+
+import ch.qos.logback.core.joran.action.PropertyAction;
+import ch.qos.logback.core.joran.action.ImportAction;
+import ch.qos.logback.core.joran.action.TimestampAction;
+import ch.qos.logback.core.joran.action.ShutdownHookAction;
+import ch.qos.logback.core.joran.action.SequenceNumberGeneratorAction;
+import ch.qos.logback.core.joran.action.SerializeModelAction;
+import ch.qos.logback.core.joran.action.AppenderAction;
+import ch.qos.logback.core.joran.action.AppenderRefAction;
+import ch.qos.logback.core.joran.action.NewRuleAction;
+import ch.qos.logback.core.joran.action.ParamAction;
+import ch.qos.logback.core.joran.action.IfAction;
+import ch.qos.logback.core.joran.action.ThenAction;
+import ch.qos.logback.core.joran.action.ElseAction;
+import ch.qos.logback.core.joran.action.SiftAction;
+import ch.qos.logback.core.joran.conditional.IfAction;
+import ch.qos.logback.core.joran.conditional.ThenAction;
+import ch.qos.logback.core.joran.conditional.ElseAction;
+import ch.qos.logback.core.joran.sanity.AppenderWithinAppenderSanityChecker;
+import ch.qos.logback.core.joran.sanity.SanityChecker;
+import ch.qos.logback.core.joran.spi.ElementSelector;
+import ch.qos.logback.core.joran.spi.RuleStore;
+import ch.qos.logback.core.joran.spi.SaxEventInterpreter;
+import ch.qos.logback.core.joran.spi.SaxEventInterpretationContext;
+import ch.qos.logback.core.model.Model;
+import ch.qos.logback.core.model.processor.DefaultProcessor;
+import ch.qos.logback.core.model.processor.DefaultProcessor;
+import ch.qos.logback.core.model.processor.DefaultProcessor;
+import ch.qos.logback.core.model.processor.DefaultProcessor;
+import ch.qos.logback.core.spi.ContextAware;
+import ch.qos.logback.core.spi.ContextAwareBase;
+import ch.qos.logback.core.joran.spi.ElementPath;
+
+/**
+ * Minimal concrete implementation of {@link JoranConfiguratorBase}.
+ * The generic type parameter is unused for these tests, therefore {@code Object}
+ * is supplied.
+ */
+class TestConfigurator extends JoranConfiguratorBase<Object> {
+    // No additional behaviour required – all abstract methods are already
+    // implemented in {@code JoranConfiguratorBase}.
+}
+
+/**
+ * Very small in‑memory {@link RuleStore} implementation that records the
+ * rules added by {@code addElementSelectorAndActionAssociations}.  It also
+ * stores the transparent path parts so the test can verify them.
+ */
+class SimpleRuleStore implements RuleStore {
+
+    static class Rule {
+        final ElementSelector selector;
+        final Supplier<?> supplier;
+
+        Rule(ElementSelector selector, Supplier<?> supplier) {
+            this.selector = selector;
+            this.supplier = supplier;
+        }
+    }
+
+    private final List<Rule> rules = new ArrayList<>();
+    private final List<String> transparentParts = new ArrayList<>();
+
+    @Override
+    public void addRule(ElementSelector elementSelector, String actionClassStr) {
+        // Not used by the configurator – we store a dummy supplier.
+        rules.add(new Rule(elementSelector, () -> {
+            try {
+                return Class.forName(actionClassStr).newInstance();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }));
+    }
+
+    @Override
+    public void addRule(ElementSelector elementSelector, Supplier<Action> actionSupplier) {
+        rules.add(new Rule(elementSelector, actionSupplier));
+    }
+
+    @Override
+    public Supplier<Action> matchActions(ElementPath elementPath) {
+        // Very simple matching – we compare the selector string with the path
+        // string representation.
+        String path = elementPath.toString(); // ElementPath implements toString()
+        for (Rule r : rules) {
+            if (r.selector.toString().equals(path)) {
+                @SuppressWarnings("unchecked")
+                Supplier<Action> s = (Supplier<Action>) r.supplier;
+                return s;
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public void addTransparentPathPart(String pathPart) {
+        transparentParts.add(pathPart);
+    }
+
+    /** Accessor for the test – not part of the public API. */
+    List<Rule> getRules() {
+        return rules;
+    }
+
+    List<String> getTransparentParts() {
+        return transparentParts;
+    }
+}
+
+/**
+ * Simple {@link SanityChecker} implementation that records whether its
+ * {@code check(..)} method has been invoked and which {@link ContextAware}
+ * context (if any) it received.
+ */
+class RecordingSanityChecker implements SanityChecker, ContextAware {
+
+    private ContextAware contextAware;
+    private boolean checked = false;
+    private Model receivedModel = null;
+
+    @Override
+    public void check(Model model) {
+        this.checked = true;
+        this.receivedModel = model;
+    }
+
+    @Override
+    public void setContext(ch.qos.logback.core.spi.Context context) {
+        // store the context in a dummy ContextAwareBase to satisfy the contract
+        this.contextAware = new ContextAwareBase() {
+            @Override
+            public void setContext(ch.qos.logback.core.spi.Context ctx) {
+                super.setContext(ctx);
+            }
+        };
+        this.contextAware.setContext(context);
+    }
+
+    @Override
+    public ch.qos.logback.core.spi.Context getContext() {
+        return contextAware != null ? contextAware.getContext() : null;
+    }
+
+    /** Test helpers */
+    boolean isChecked() {
+        return checked;
+    }
+
+    Model getReceivedModel() {
+        return receivedModel;
+    }
+}
+
+/**
+ * Test suite for {@link JoranConfiguratorBase}.
+ */
+public class JoranConfiguratorBaseTest {
+
+    private TestConfigurator configurator;
+
+    @Before
+    public void setUp() {
+        configurator = new TestConfigurator();
+    }
+
+    /**
+     * Verifies that {@code addElementSelectorAndActionAssociations} registers all
+     * expected selectors and that the transparent path parts ("if",
+     * "then", "else", "sift") are recorded.
+     */
+    @Test
+    public void testAddElementSelectorAndActionAssociations() {
+        SimpleRuleStore ruleStore = new SimpleRuleStore();
+
+        // invoke the protected method via reflection
+        try {
+            java.lang.reflect.Method m = JoranConfiguratorBase.class
+                    .getDeclaredMethod("addElementSelectorAndActionAssociations", RuleStore.class);
+            m.setAccessible(true);
+            m.invoke(configurator, ruleStore);
+        } catch (Exception e) {
+            fail("Reflection failed: " + e);
+        }
+
+        // Expected selectors – a subset is enough to prove the list is built.
+        String[] expectedSelectors = {
+                "*/variable",
+                "*/property",
+                "*/substitutionProperty",
+                "configuration/import",
+                "configuration/timestamp",
+                "*/appender",
+                "*/if",
+                "*/if/then",
+                "*/if/else",
+                "*/appender/sift"
+        };
+
+        List<String> actualSelectors = new ArrayList<>();
+        for (SimpleRuleStore.Rule r : ruleStore.getRules()) {
+            actualSelectors.add(r.selector.toString());
+        }
+
+        for (String sel : expectedSelectors) {
+            assertTrue("Selector missing: " + sel, actualSelectors.contains(sel));
+        }
+
+        // Transparent parts
+        List<String> transparent = ruleStore.getTransparentParts();
+        assertTrue("Transparent part \"if\" missing", transparent.contains("if"));
+        assertTrue("Transparent part \"then\" missing", transparent.contains("then"));
+        assertTrue("Transparent part \"else\" missing", transparent.contains("else"));
+        assertTrue("Transparent part \"sift\" missing", transparent.contains("sift"));
+    }
+
+    /**
+     * Checks that {@code sanityCheck} delegates to {@code performCheck} with an
+     * {@link AppenderWithinAppenderSanityChecker}.  The test uses a spy‑like
+     * custom sanity checker to verify the delegation.
+     */
+    @Test
+    public void testSanityCheckDelegatesToPerformCheck() {
+        // Replace the internal method with a subclass that records the call.
+        TestConfigurator delegatingConfigurator = new TestConfigurator() {
+            private boolean performCheckCalled = false;
+            private SanityChecker passedChecker = null;
+            private Model passedModel = null;
+
+            @Override
+            protected void performCheck(SanityChecker sc, Model model) {
+                performCheckCalled = true;
+                passedChecker = sc;
+                passedModel = model;
+            }
+        };
+
+        Model dummyModel = new Model();
+        delegatingConfigurator.sanityCheck(dummyModel);
+
+        // Verify that performCheck was invoked with the correct arguments.
+        assertTrue("performCheck should have been called", ((TestConfigurator) delegatingConfigurator).performCheckCalled);
+        assertTrue("Checker should be an instance of AppenderWithinAppenderSanityChecker",
+                ((TestConfigurator) delegatingConfigurator).passedChecker instanceof AppenderWithinAppenderSanityChecker);
+        assertSame("Model passed to performCheck must be the same as the one supplied",
+                dummyModel, ((TestConfigurator) delegatingConfigurator).passedModel);
+    }
+
+    /**
+     * Ensures that {@code performCheck} sets the context on a {@link ContextAware}
+     * sanity checker before invoking {@code check(..)}.
+     */
+    @Test
+    public void testPerformCheckSetsContextOnContextAwareChecker() {
+        RecordingSanityChecker checker = new RecordingSanityChecker();
+        Model model = new Model();
+
+        // The configurator inherits ContextAwareBase; set a dummy context.
+        configurator.setContext(new ch.qos.logback.core.spi.ContextBase());
+
+        configurator.performCheck(checker, model);
+
+        assertTrue("Checker.check should have been invoked", checker.isChecked());
+        assertSame("The model received by the checker must be the one passed in",
+                model, checker.getReceivedModel());
+        assertNotNull("Context should have been injected into the checker", checker.getContext());
+    }
+
+    /**
+     * Verifies that {@code setImplicitRuleSupplier} correctly registers the
+     * {@code ImplicitModelAction} supplier on the supplied interpreter.
+     */
+    @Test
+    public void testSetImplicitRuleSupplier() throws Exception {
+        // Minimal objects required to build a SaxEventInterpreter
+        SimpleRuleStore ruleStore = new SimpleRuleStore();
+        ElementPath initialPath = new ElementPath(); // empty path
+        List<?> emptyEvents = new ArrayList<>();
+
+        SaxEventInterpreter interpreter = new SaxEventInterpreter(
+                new ch.qos.logback.core.spi.ContextBase(),
+                ruleStore,
+                initialPath,
+                emptyEvents);
+
+        // Invoke the protected method via reflection
+        java.lang.reflect.Method m = JoranConfiguratorBase.class
+                .getDeclaredMethod("setImplicitRuleSupplier", SaxEventInterpreter.class);
+        m.setAccessible(true);
+        m.invoke(configurator, interpreter);
+
+        // Use reflection to obtain the private supplier field
+        Field supplierField = SaxEventInterpreter.class.getDeclaredField("implicitActionSupplier");
+        supplierField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Supplier<?> supplier = (Supplier<?>) supplierField.get(interpreter);
+
+        assertNotNull("Implicit action supplier must be set", supplier);
+        assertEquals("Implicit action supplier must be ImplicitModelAction::new",
+                "ch.qos.logback.core.joran.action.ImplicitModelAction",
+                supplier.get().getClass().getName());
+    }
+
+    /**
+     * Calls {@code buildModelInterpretationContext} and checks that the
+     * {@link ModelInterpretationContext} is created and that the method does
+     * not throw any exception.
+     */
+    @Test
+    public void testBuildModelInterpretationContext() {
+        // The method is protected – invoke via reflection.
+        try {
+            java.lang.reflect.Method m = JoranConfiguratorBase.class
+                    .getDeclaredMethod("buildModelInterpretationContext");
+            m.setAccessible(true);
+            m.invoke(configurator);
+        } catch (Exception e) {
+            fail("buildModelInterpretationContext threw: " + e);
+        }
+
+        // Verify that the configurator now holds a non‑null ModelInterpretationContext.
+        assertNotNull("ModelInterpretationContext should have been created",
+                configurator.getModelInterpretationContext());
+    }
+
+    /**
+     * Executes a minimal configuration (empty <configuration/> element) and
+     * checks that {@code getInterpretationContext} returns a non‑null object.
+     */
+    @Test
+    public void testGetInterpretationContext() throws Exception {
+        String xml = "<configuration></configuration>";
+        InputStream is = new ByteArrayInputStream(xml.getBytes("UTF-8"));
+
+        // Perform a real configuration – this will initialise the internal interpreter.
+        configurator.doConfigure(is);
+
+        SaxEventInterpretationContext ctx = configurator.getInterpretationContext();
+        assertNotNull("Interpretation context must be non‑null after configuration", ctx);
+    }
+
+    /**
+     * Validates that {@code addModelHandlerAssociations} registers handlers for
+     * a selection of model classes.  The test inspects the internal handler map
+     * of {@link DefaultProcessor} via reflection.
+     */
+    @Test
+    public void testAddModelHandlerAssociations() throws Exception {
+        DefaultProcessor processor = new DefaultProcessor(
+                new ch.qos.logback.core.spi.ContextBase(),
+                configurator.getModelInterpretationContext());
+
+        // Invoke the protected method via reflection.
+        java.lang.reflect.Method m = JoranConfiguratorBase.class
+                .getDeclaredMethod("addModelHandlerAssociations", DefaultProcessor.class);
+        m.setAccessible(true);
+        m.invoke(configurator, processor);
+
+        // Access the private handler registry inside DefaultProcessor.
+        Field handlersField = DefaultProcessor.class.getDeclaredField("handlers");
+        handlersField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Class<?>, ?> handlers = (Map<Class<?>, ?>) handlersField.get(processor);
+
+        // Verify that a few expected handlers are present.
+        assertTrue("Handler for ImportModel must be registered",
+                handlers.containsKey(ch.qos.logback.core.model.ImportModel.class));
+        assertTrue("Handler for IfModel must be registered",
+                handlers.containsKey(ch.qos.logback.core.model.conditional.IfModel.class));
+        assertTrue("Handler for SiftModel must be registered",
+                handlers.containsKey(ch.qos.logback.core.model.SiftModel.class));
+    }
+
+    /**
+     * Edge‑case test: calling {@code sanityCheck} with a {@code null} model
+     * should result in a {@link NullPointerException} (the current
+     * implementation does not guard against null).  This verifies the
+     * behaviour and documents it for future maintainers.
+     */
+    @Test(expected = NullPointerException.class)
+    public void testSanityCheckWithNullModelThrows() {
+        configurator.sanityCheck(null);
+    }
+}

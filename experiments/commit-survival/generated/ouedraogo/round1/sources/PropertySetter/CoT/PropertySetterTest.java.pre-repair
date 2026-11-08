@@ -1,0 +1,365 @@
+package ch.qos.logback.core.joran.util;
+
+import static org.junit.Assert.*;
+
+import java.util.List;
+
+import org.junit.Before;
+import org.junit.Test;
+
+import ch.qos.logback.core.joran.spi.DefaultClass;
+import ch.qos.logback.core.joran.spi.DefaultNestedComponentRegistry;
+import ch.qos.logback.core.util.AggregationType;
+import ch.qos.logback.core.util.PropertySetterException;
+
+/**
+ * Unit tests for {@link PropertySetter}.
+ *
+ * The tests cover:
+ * <ul>
+ *   <li>All public methods (basic functionality)</li>
+ *   <li>Edge cases such as null values, missing setters, conversion failures</li>
+ *   <li>Aggregation type detection</li>
+ *   <li>Implicit class resolution via registry, annotation and concrete type</li>
+ * </ul>
+ */
+public class PropertySetterTest {
+
+    /* --------------------------------------------------------------------- */
+    /* Helper bean classes used throughout the tests                         */
+    /* --------------------------------------------------------------------- */
+
+    public static class SubBean {
+        // simple POJO with a default constructor
+    }
+
+    public static class CustomBean {
+        // used only for registry‑based lookup
+    }
+
+    public static class TestBean {
+
+        private String name;
+        private int age;
+        private boolean male;
+        private SubBean complex;
+        private final List<String> tags = new java.util.ArrayList<>();
+        private final List<SubBean> subBeans = new java.util.ArrayList<>();
+
+        /* ----- simple setters / getters ----- */
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setAge(int age) {
+            this.age = age;
+        }
+
+        public int getAge() {
+            return age;
+        }
+
+        public void setMale(boolean male) {
+            this.male = male;
+        }
+
+        public boolean isMale() {
+            return male;
+        }
+
+        /* ----- adder for a basic property collection ----- */
+        public void addTag(String tag) {
+            tags.add(tag);
+        }
+
+        public List<String> getTags() {
+            return tags;
+        }
+
+        /* ----- adder for a complex property collection, annotated with @DefaultClass ----- */
+        @DefaultClass(SubBean.class)
+        public void addSubBean(SubBean sub) {
+            subBeans.add(sub);
+        }
+
+        public List<SubBean> getSubBeans() {
+            return subBeans;
+        }
+
+        /* ----- complex property setter ----- */
+        public void setComplex(SubBean complex) {
+            this.complex = complex;
+        }
+
+        public SubBean getComplex() {
+            return complex;
+        }
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* Test fixtures                                                       */
+    /* --------------------------------------------------------------------- */
+
+    private BeanDescriptionCache cache;
+    private PropertySetter setter;
+    private TestBean bean;
+
+    @Before
+    public void setUp() {
+        // Context is not needed for the logic we test; passing null is acceptable for the test harness.
+        cache = new BeanDescriptionCache(null);
+        bean = new TestBean();
+        setter = new PropertySetter(cache, bean);
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 1. Public method: setProperty(String, String)                        */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testSetProperty_basicString() {
+        setter.setProperty("name", "John");
+        assertEquals("John", bean.getName());
+    }
+
+    @Test
+    public void testSetProperty_basicIntConversion() {
+        setter.setProperty("age", "42");
+        assertEquals(42, bean.getAge());
+    }
+
+    @Test
+    public void testSetProperty_basicBooleanConversion() {
+        setter.setProperty("male", "true");
+        assertTrue(bean.isMale());
+    }
+
+    @Test
+    public void testSetProperty_nullValueIsIgnored() {
+        setter.setProperty("name", null);
+        assertNull(bean.getName()); // remains null, no exception
+    }
+
+    @Test
+    public void testSetProperty_missingSetterIsIgnored() {
+        // "unknown" does not exist – the method should merely log a warning and do nothing.
+        setter.setProperty("unknown", "value");
+        // No side‑effects on the bean.
+        assertNull(bean.getName());
+        assertEquals(0, bean.getAge());
+    }
+
+    @Test
+    public void testSetProperty_invalidConversionLeavesFieldUnchanged() {
+        // age expects an int – supplying a non‑numeric string should not change the field.
+        setter.setProperty("age", "notANumber");
+        assertEquals(0, bean.getAge()); // default int value
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 2. Public method: computeAggregationType(String)                       */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testComputeAggregationType_basicProperty() {
+        AggregationType type = setter.computeAggregationType("name");
+        assertEquals(AggregationType.AS_BASIC_PROPERTY, type);
+    }
+
+    @Test
+    public void testComputeAggregationType_complexProperty() {
+        AggregationType type = setter.computeAggregationType("complex");
+        assertEquals(AggregationType.AS_COMPLEX_PROPERTY, type);
+    }
+
+    @Test
+    public void testComputeAggregationType_basicCollection() {
+        AggregationType type = setter.computeAggregationType("tag");
+        // adder for String → basic property collection
+        assertEquals(AggregationType.AS_BASIC_PROPERTY_COLLECTION, type);
+    }
+
+    @Test
+    public void testComputeAggregationType_complexCollection() {
+        AggregationType type = setter.computeAggregationType("subBean");
+        // adder for SubBean → complex property collection
+        assertEquals(AggregationType.AS_COMPLEX_PROPERTY_COLLECTION, type);
+    }
+
+    @Test
+    public void testComputeAggregationType_notFound() {
+        AggregationType type = setter.computeAggregationType("nonExisting");
+        assertEquals(AggregationType.NOT_FOUND, type);
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 3. Public method: getObjClass()                                        */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testGetObjClass_returnsBeanClass() {
+        assertEquals(TestBean.class, setter.getObjClass());
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 4. Public method: addComplexProperty(String, Object)                   */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testAddComplexProperty_successfulAdder() {
+        SubBean sub = new SubBean();
+        setter.addComplexProperty("SubBean", sub); // method name after capitalisation -> addSubBean
+        assertEquals(1, bean.getSubBeans().size());
+        assertSame(sub, bean.getSubBeans().get(0));
+    }
+
+    @Test
+    public void testAddComplexProperty_missingAdderLogsError() {
+        // No adder called "addMissing"
+        setter.addComplexProperty("Missing", new Object());
+        // No exception – just an internal warning; bean state unchanged.
+        assertTrue(bean.getSubBeans().isEmpty());
+    }
+
+    @Test
+    public void testAddComplexProperty_typeMismatchIsIgnored() {
+        // adder expects SubBean, we give a String – sanity check should reject it.
+        setter.addComplexProperty("SubBean", "notASubBean");
+        assertTrue(bean.getSubBeans().isEmpty());
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 5. Public method: addBasicProperty(String, String)                    */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testAddBasicProperty_successfulAdder() {
+        setter.addBasicProperty("tag", "firstTag");
+        assertEquals(1, bean.getTags().size());
+        assertEquals("firstTag", bean.getTags().get(0));
+    }
+
+    @Test
+    public void testAddBasicProperty_nullValueIsIgnored() {
+        setter.addBasicProperty("tag", null);
+        assertTrue(bean.getTags().isEmpty());
+    }
+
+    @Test
+    public void testAddBasicProperty_missingAdderLogsError() {
+        setter.addBasicProperty("unknown", "value");
+        // No side‑effects.
+        assertTrue(bean.getTags().isEmpty());
+    }
+
+    @Test
+    public void testAddBasicProperty_invalidConversionLogsError() {
+        // adder expects String, conversion never fails, so we simulate a failure by
+        // using a property whose adder expects an int (not present in TestBean).
+        // Since we cannot create such a method without changing the bean, we assert
+        // that the method simply does not add anything when conversion fails.
+        // (The current TestBean does not expose such a scenario, so this test
+        // confirms the method does not throw.)
+        setter.addBasicProperty("age", "notANumber");
+        // No addition to any collection, bean state unchanged.
+        assertEquals(0, bean.getAge());
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 6. Public method: setComplexProperty(String, Object)                   */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testSetComplexProperty_successfulSetter() {
+        SubBean sub = new SubBean();
+        setter.setComplexProperty("complex", sub);
+        assertSame(sub, bean.getComplex());
+    }
+
+    @Test
+    public void testSetComplexProperty_missingSetterLogsWarn() {
+        setter.setComplexProperty("nonExisting", new Object());
+        // No exception, bean unchanged.
+        assertNull(bean.getComplex());
+    }
+
+    @Test
+    public void testSetComplexProperty_typeMismatchIsIgnored() {
+        setter.setComplexProperty("complex", "notASubBean");
+        assertNull(bean.getComplex());
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 7. Public method: getObj()                                             */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testGetObj_returnsOriginalBean() {
+        assertSame(bean, setter.getObj());
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 8. Public method: getClassNameViaImplicitRules(...)                    */
+    /* --------------------------------------------------------------------- */
+
+    @Test
+    public void testGetClassNameViaImplicitRules_registryOverrides() {
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+        registry.add(TestBean.class, "custom", CustomBean.class);
+
+        Class<?> result = setter.getClassNameViaImplicitRules(
+                "custom",
+                AggregationType.AS_COMPLEX_PROPERTY,
+                registry);
+
+        assertEquals(CustomBean.class, result);
+    }
+
+    @Test
+    public void testGetClassNameViaImplicitRules_annotationProvidesDefaultClass() {
+        // No entry in the registry, should fall back to @DefaultClass on addSubBean
+        Class<?> result = setter.getClassNameViaImplicitRules(
+                "subBean",
+                AggregationType.AS_COMPLEX_PROPERTY_COLLECTION,
+                new DefaultNestedComponentRegistry());
+
+        assertEquals(SubBean.class, result);
+    }
+
+    @Test
+    public void testGetClassNameViaImplicitRules_concreteInstantiableType() {
+        // No registry entry, no annotation – should return the concrete parameter type.
+        Class<?> result = setter.getClassNameViaImplicitRules(
+                "complex",
+                AggregationType.AS_COMPLEX_PROPERTY,
+                new DefaultNestedComponentRegistry());
+
+        assertEquals(SubBean.class, result);
+    }
+
+    @Test
+    public void testGetClassNameViaImplicitRules_notInstantiableReturnsNull() {
+        // Create a bean with a setter that accepts an interface (non‑instantiable).
+        class InterfaceBean {
+            public void setRunnable(java.lang.Runnable r) { /* no‑op */ }
+        }
+        InterfaceBean ib = new InterfaceBean();
+        PropertySetter ps = new PropertySetter(cache, ib);
+
+        Class<?> result = ps.getClassNameViaImplicitRules(
+                "runnable",
+                AggregationType.AS_COMPLEX_PROPERTY,
+                new DefaultNestedComponentRegistry());
+
+        assertNull(result);
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* 9. Public method: getObjClass() already covered in test #3            */
+    /* --------------------------------------------------------------------- */
+
+}

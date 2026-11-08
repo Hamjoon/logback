@@ -1,0 +1,258 @@
+package ch.qos.logback.core.joran;
+import ch.qos.logback.core.joran.action.Action;
+import ch.qos.logback.core.joran.sanity.AppenderWithinAppenderSanityChecker;
+import ch.qos.logback.core.spi.ContextAware;
+import ch.qos.logback.core.model.processor.DefaultProcessor;
+import ch.qos.logback.core.joran.sanity.SanityChecker;
+import ch.qos.logback.core.joran.event.SaxEvent;
+
+
+import ch.qos.logback.core.joran.spi.*;
+import ch.qos.logback.core.model.Model;
+import ch.qos.logback.core.sift.SiftModelHandler;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.List;
+import java.util.function.Supplier;
+
+import static org.junit.Assert.*;
+
+/**
+ * JUnit‑4 test suite for {@link JoranConfiguratorBase}.
+ *
+ * The tests concentrate on the public API of the class
+ * (<code>getInterpretationContext()</code>) and on the protected
+ * behaviour that is exercised via a concrete test subclass.
+ *
+ * All tests use only the classes, constructors and methods that are
+ * listed in the supplied source code and dependency signatures.
+ */
+public class JoranConfiguratorBaseTest {
+
+    /** A minimal concrete subclass used to instantiate the abstract class. */
+    private static class TestJoranConfigurator extends JoranConfiguratorBase<Object> {
+
+        /** Captured arguments from the overridden {@code performCheck}. */
+        SanityChecker capturedChecker;
+        Model capturedModel;
+
+        @Override
+        protected void addElementSelectorAndActionAssociations(RuleStore rs) {
+            // no rules needed for the unit tests
+        }
+
+        @Override
+        protected void setImplicitRuleSupplier(SaxEventInterpreter interpreter) {
+            // delegate to super – the behaviour is exercised indirectly
+            super.setImplicitRuleSupplier(interpreter);
+        }
+
+        @Override
+        protected void performCheck(SanityChecker sc, Model model) {
+            // capture arguments for verification and then invoke the real implementation
+            this.capturedChecker = sc;
+            this.capturedModel = model;
+            super.performCheck(sc, model);
+        }
+
+        @Override
+        protected void addModelHandlerAssociations(DefaultProcessor defaultProcessor) {
+            // delegate to super – not needed for the current tests
+            super.addModelHandlerAssociations(defaultProcessor);
+        }
+    }
+
+    /** Simple {@link RuleStore} stub – all methods are no‑ops. */
+    private static class StubRuleStore implements RuleStore {
+        @Override
+        public void addRule(ElementSelector elementSelector, String actionClassStr) {
+            // no‑op
+        }
+
+        @Override
+        public void addRule(ElementSelector elementSelector, Supplier<Action> actionSupplier) {
+            // no‑op
+        }
+
+        @Override
+        public Supplier<Action> matchActions(ElementPath elementPath) {
+            return null;
+        }
+
+        @Override
+        public void addTransparentPathPart(String pathPart) {
+            // no‑op
+        }
+    }
+
+    /** Minimal {@link SanityChecker} implementation used in tests. */
+    private static class SimpleSanityChecker implements SanityChecker {
+        boolean checkCalled = false;
+
+        @Override
+        public void check(Model model) {
+            checkCalled = true;
+        }
+    }
+
+    /** {@link SanityChecker} that also implements {@link ContextAware}. */
+    private static class ContextAwareSanityChecker implements SanityChecker, ContextAware {
+        Context receivedContext = null;
+        boolean checkCalled = false;
+
+        @Override
+        public void setContext(Context context) {
+            this.receivedContext = context;
+        }
+
+        @Override
+        public Context getContext() {
+            return receivedContext;
+        }
+
+        @Override
+        public void addStatus(Status status) {
+        }
+
+        @Override
+        public void addInfo(String msg) {
+        }
+
+        @Override
+        public void addInfo(String msg, Throwable ex) {
+        }
+
+        @Override
+        public void addWarn(String msg) {
+        }
+
+        @Override
+        public void addWarn(String msg, Throwable ex) {
+        }
+
+        @Override
+        public void addError(String msg) {
+        }
+
+        @Override
+        public void addError(String msg, Throwable ex) {
+        }
+
+        @Override
+        public void check(Model model) {
+            checkCalled = true;
+        }
+    }
+
+    private TestJoranConfigurator configurator;
+
+    @Before
+    public void setUp() {
+        configurator = new TestJoranConfigurator();
+        // the base class (ContextAwareBase) allows a null context – we keep it that way
+        configurator.setContext(null);
+    }
+
+    /**
+     * Verifies that {@code getInterpretationContext()} returns the
+     * {@link SaxEventInterpretationContext} held by the internal
+     * {@link SaxEventInterpreter}.
+     */
+    @Test
+    public void testGetInterpretationContext() throws Exception {
+        // build a very small interpreter – all arguments may be null / empty
+        StubRuleStore ruleStore = new StubRuleStore();
+        List<SaxEvent> emptyEventList = Collections.emptyList();
+
+        // the constructor of SaxEventInterpreter requires a Context, a RuleStore,
+        // an ElementPath and a List<SaxEvent>.  The first three arguments are not
+        // used by the method we are testing, therefore they can safely be null.
+        SaxEventInterpreter interpreter = new SaxEventInterpreter(
+                null,                // Context
+                ruleStore,           // RuleStore
+                null,                // ElementPath (not needed for this test)
+                emptyEventList);     // empty event list
+
+        // inject the interpreter into the configurator (the field is protected)
+        Field f = JoranConfiguratorBase.class.getDeclaredField("saxEventInterpreter");
+        f.setAccessible(true);
+        f.set(configurator, interpreter);
+
+        // exercise the method under test
+        SaxEventInterpretationContext ctx = configurator.getInterpretationContext();
+
+        // the returned object must be the same instance that the interpreter holds
+        assertNotNull("Interpretation context must not be null", ctx);
+        assertSame("Returned context must be the one held by the interpreter",
+                interpreter.getSaxEventInterpretationContext(), ctx);
+    }
+
+    /**
+     * {@code sanityCheck(Model)} is a thin wrapper around {@code performCheck}.
+     * By overriding {@code performCheck} in the test subclass we can capture the
+     * arguments and verify that the correct {@link SanityChecker} implementation
+     * ( {@link AppenderWithinAppenderSanityChecker}) is used.
+     */
+    @Test
+    public void testSanityCheckDelegatesToPerformCheck() {
+        Model dummyModel = new Model();
+
+        // invoke the method under test
+        configurator.sanityCheck(dummyModel);
+
+        // the overridden performCheck should have captured the arguments
+        assertNotNull("SanityChecker instance should have been captured", configurator.capturedChecker);
+        assertTrue("Captured checker must be an AppenderWithinAppenderSanityChecker",
+                configurator.capturedChecker instanceof AppenderWithinAppenderSanityChecker);
+        assertSame("Model passed to performCheck must be the same as the one supplied",
+                dummyModel, configurator.capturedModel);
+    }
+
+    /**
+     * When the supplied {@link SanityChecker} also implements {@link ContextAware},
+     * {@code performCheck} must set the configurator's context on it before invoking
+     * {@code check(...)}.
+     */
+    @Test
+    public void testPerformCheckWithContextAwareChecker() {
+        Model dummyModel = new Model();
+        ContextAwareSanityChecker checker = new ContextAwareSanityChecker();
+
+        // context is currently null – this is acceptable for the test
+        configurator.performCheck(checker, dummyModel);
+
+        // verify that the checker received the (null) context
+        assertNull("Context passed to the checker should be null (as set on the configurator)", checker.receivedContext);
+
+        // verify that the check method was invoked
+        assertTrue("Checker.check(...) must have been called", checker.checkCalled);
+    }
+
+    /**
+     * When the supplied {@link SanityChecker} does NOT implement {@link ContextAware},
+     * {@code performCheck} must simply invoke {@code check(...)} without trying to set a context.
+     */
+    @Test
+    public void testPerformCheckWithoutContextAwareChecker() {
+        Model dummyModel = new Model();
+        SimpleSanityChecker checker = new SimpleSanityChecker();
+
+        configurator.performCheck(checker, dummyModel);
+
+        assertTrue("SimpleSanityChecker.check(...) must have been called", checker.checkCalled);
+    }
+
+    /**
+     * Edge case: passing a {@code null} model to {@code sanityCheck(...)} should
+     * result in a {@link NullPointerException} because the underlying sanity checker
+     * receives a {@code null} argument. The test confirms that the exception is
+     * indeed thrown.
+     */
+    @Test(expected = NullPointerException.class)
+    public void testSanityCheckWithNullModelThrowsException() {
+        configurator.sanityCheck(null);
+    }
+}

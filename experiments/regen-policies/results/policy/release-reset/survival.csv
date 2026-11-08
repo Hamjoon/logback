@@ -1,0 +1,104 @@
+index,sha,date,subject,evaluated,event,dev-scope_segment,dev-scope_segment_denominator,dev-scope_alive,dev-scope_lost,dev-scope_carried_alive,dev-scope_new_alive,ktester_segment,ktester_segment_denominator,ktester_alive,ktester_lost,ktester_carried_alive,ktester_new_alive,ouedraogo_segment,ouedraogo_segment_denominator,ouedraogo_alive,ouedraogo_lost,ouedraogo_carried_alive,ouedraogo_new_alive
+0,88abf59a18720854f4f55feb8d8f6951cfaf6037,2023-11-27T16:01:10+01:00,t = 88abf59a18720854f4f55feb8d8f6951cfaf6037,yes,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+1,867bf581b678a2eed60d56f257f328284e14ad45,2023-11-28T15:18:29+01:00,remove superflus system.out call,yes,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+2,7ee000a0a359d239c60bb93a2f4f4ea467c38395,2023-11-28T15:28:45+01:00,prepare release 1.4.13,yes,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+3,8a746eb0eff709ac036fb4d6ab0719aaffbc0702,2023-11-28T15:52:14+01:00,start work on 1.4.14-SNAPSHOT,yes,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+4,7018a3609c7bcc9dc7bf5903509901a986e5f578,2023-12-01T12:44:44+01:00,"fix missing deseialization filter init call, enable commented out test case",yes,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+5,407f935603f3f4d7825e4f57f85ed494da3b7197,2023-12-01T12:50:28+01:00,prepare release 1.4.14,yes,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+6,1fec65568fc82ad8f8f19f677255c92e0fb03669,2023-12-04T16:53:37+01:00,start work on 1.4.15-SNAPSHOT,yes,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+7,724efb5cba2d4a47ec8acc722632fb30411193c0,2023-12-04T16:57:56+01:00,"fix typo, make ArchiveRemoverRunnable inner class  protected",yes,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+8,d7072d6ae6ab29ced696ae7ef290f1e2c121dcd5,2023-12-04T17:17:50+01:00,revert to public access for TimeBasedArchiveRemover.ArchiveRemoverRunnable,yes,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+9,f3efb8f166d65a3914f6b5193446c5e4c26ac5ba,2024-01-05T19:42:33+01:00,update license in some old files not part of the ditributed binary,no,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+10,5c50c07b1b9446706cf3c089fee2ddd019cfac68,2024-02-01T11:11:15+01:00,start work on version 1.5.0-SNAPSHOT,yes,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+11,972817d7211bf238d4b2379fbe66948c48773b2c,2024-02-01T11:13:09+01:00,logback-access module moved to https://github.com/qos-ch/logback-access repository,no,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+12,60f8b20db393bb72f77cd8c9d6619c5730b0d9c8,2024-02-01T11:13:44+01:00,logback-access module moved to https://github.com/qos-ch/logback-access repository,yes,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+13,432cd9c49c3be84bea3804896626475259f04f26,2024-02-01T11:23:22+01:00,"version bumped to 1.5.0, logback-access moved",yes,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+14,5a3613346573824f8e89870b6e3562dc275a3a74,2024-02-02T15:25:44+01:00,fix issues/710,no,evaluate,1,45,45,0,45,0,1,159,159,0,159,0,1,169,169,0,169,0
+15,5782d298a4421cd5b8926d931e0f81e0de8e259a,2024-02-02T18:10:38+01:00, deprecated OptionHelper.isNullOrEmpty method and replaced by OptionHelper.isNullOrEmptyOrAllSpaces,yes,evaluate,1,45,44,1,44,0,1,159,159,0,159,0,1,169,169,0,169,0
+16,9078f68f49673d2163ebbaa075ec4018a6d12e54,2024-02-02T22:12:36+01:00,allow enabling/disabling of output fields in JsonEncoder,yes,evaluate,1,45,44,0,44,0,1,159,159,0,159,0,1,169,169,0,169,0
+17,ac788848219902ef5f86359215bced9ff4fa5aaf,2024-02-16T18:15:39+01:00,fix issues/779 using Multi-Release jar,yes,evaluate,1,45,44,0,44,0,1,159,159,0,159,0,1,169,169,0,169,0
+18,7e4e6e2ef484e1f35acbdddbd46c7722b5da56ef,2024-02-16T18:20:59+01:00,remove references to jetty,yes,evaluate,1,45,44,0,44,0,1,159,159,0,159,0,1,169,169,0,169,0
+19,6beda7b9d4bf2cbab4129da11efa6a635304a478,2024-02-16T18:42:25+01:00,prepare release 1.5.0,yes,evaluate,1,45,44,0,44,0,1,159,159,0,159,0,1,169,169,0,169,0
+20,767a96c160cb3f56b2695b60ebafcd375af77d59,2024-02-17T11:57:42+01:00,start work on 1.5.1-SNAPSHOT,yes,evaluate,1,45,44,0,44,0,1,159,159,0,159,0,1,169,169,0,169,0
+21,b59f97e56fb5b5b41895bf29ecd8b3f5d4c311eb,2024-02-22T15:31:56+01:00,extract AggregationAssessor class from PropertyGetter,yes,evaluate,1,45,27,17,27,0,1,159,157,2,157,0,1,169,47,122,47,0
+22,4eaefeb113f2a33adc9bf6b09e7182ec2cd200b8,2024-02-22T19:41:01+01:00,change variable name,yes,evaluate,1,45,27,0,27,0,1,159,157,0,157,0,1,169,47,0,47,0
+23,097da9dd54c8cb144c0a32b02c6e787f5a278166,2024-02-23T11:32:45+01:00,allow MDCAdapter to to be overriden in LogbackContext.setMDCAdapter,no,evaluate,1,45,27,0,27,0,1,159,157,0,157,0,1,169,47,0,47,0
+24,1e1c2a7f12f13de27b1d723a28c97a0a085174a6,2024-02-23T11:34:19+01:00,move 'capitalizeFirstLetter' method to StringUtil,yes,evaluate,1,45,27,0,27,0,1,159,157,0,157,0,1,169,47,0,47,0
+25,057ab677df86302246a48320948e08f43a0563c3,2024-02-24T23:15:56+01:00,"mark some methods public, more defensive code",yes,evaluate,1,45,27,0,27,0,1,159,157,0,157,0,1,169,47,0,47,0
+26,9c65d2ddbf7dbfced3f1496719d6de39ace488a2,2024-02-26T12:24:07+01:00,use release flag for the compiler-plugin,yes,evaluate,1,45,27,0,27,0,1,159,157,0,157,0,1,169,47,0,47,0
+27,6dc07a29a0699bd2f9a081215b1f5a01d4981235,2024-02-26T12:24:35+01:00,added LevelUtil,no,evaluate,1,45,27,0,27,0,1,159,157,0,157,0,1,169,47,0,47,0
+28,26b9106f96b3065205e7b3bda419976e76a1ec9a,2024-02-26T23:34:20+01:00,refactoring Property* related code,yes,evaluate,1,45,16,11,16,0,1,159,153,4,153,0,1,169,47,0,47,0
+29,a21c6b3593463c3a9144bd37ada7ca335e848ad8,2024-02-27T11:47:42+01:00,"introduce ContextAwarePropertyContainer, corresponding refactorings",yes,evaluate,1,45,16,0,16,0,1,159,153,0,153,0,1,169,47,0,47,0
+30,8f3a30422fbec60715aa14abc5321bc5c76e9b5d,2024-02-27T21:16:43+01:00,more fine tuning of propertyModelHandler and co,yes,evaluate,1,45,16,0,16,0,1,159,153,0,153,0,1,169,47,0,47,0
+31,231e9bdcb3bf9e79fd028a4ca89fa8616d9d7551,2024-02-28T14:30:12+01:00,more internal changes and refactorings,yes,evaluate,1,45,16,0,16,0,1,159,153,0,153,0,1,169,47,0,47,0
+32,88fd31c639ba6cad5e8c11bf980690f04e27eb1e,2024-02-28T14:34:55+01:00,prepare release 1.5.1,yes,evaluate,1,45,16,0,16,0,1,159,153,0,153,0,1,169,47,0,47,0
+32,88fd31c639ba6cad5e8c11bf980690f04e27eb1e,2024-02-28T14:34:55+01:00,prepare release 1.5.1,yes,regenerate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+33,0094ba31e8f728554c1bb3182aca7c2ac61f13ed,2024-02-28T18:19:42+01:00,start work on  1.5.2-SNAPSHOT,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+34,40bc1c225da6df2d4234eb4eb2fd18ceee816a4e,2024-02-29T10:23:29+01:00,export tyler related packages,no,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+35,6998e81db1f2cb1b863f57c5e32b7d3a12459e0d,2024-03-02T19:08:28+01:00,add NoAutoStartUtil.shouldBeStarted method,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+36,baf5d705612d058e2b3323b648cd4592ae586337,2024-03-02T19:08:56+01:00,prepare release 1.5.2,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+37,df7c7c55e94289af4ee92324d4359ee131cab4e8,2024-03-04T12:34:14+01:00,prepare work on 1.5.3-SNAPSHOT,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+38,99ccca7986b5fb0fd029946e92623c0ac4d3868e,2024-03-04T12:34:59+01:00,fix /issues/785,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+39,f2d8a1a30adddd5b53a906fa5fa2dd8e7fd70911,2024-03-04T12:36:36+01:00,prepare release 1.5.3,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+40,acbbc2e8e9f4720f51a5bf274e3ae8066c5838a3,2024-03-07T11:55:09+01:00,start work on 1.5.4-SNAPSHOT,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+41,a68361620c0105a1d30116cb978203f2095a245c,2024-03-07T13:57:21+01:00,StatusPrinter2 replaces StatusPrinter,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+42,89e4504f7ba3083c0b2e178d565ac1ae6642d944,2024-03-16T17:56:00+01:00,add property support methods,no,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+43,f8f0ed9463fc12d6e2d90bcffe2731037b4a1a09,2024-03-16T17:56:35+01:00,better reports in TimeBasedArchiveRemover,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+44,32259b359e5b4912ee71569f4741017133198514,2024-03-16T17:57:50+01:00,add an instance version of StatusPrinter,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+45,b4b7b62418300cc966246be385bb47248ab65f0e,2024-03-26T17:03:58+01:00,fix typo in the README.md,no,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+46,d2f1cff49aea0625922996223430f43b6c05dcfd,2024-04-04T22:11:29+02:00,test logback_1759,no,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+47,7587630663c892b56edf613e8b63178ab8ac4f5d,2024-04-04T22:25:02+02:00,more complete initialization,no,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+48,596fbea0dbb6b9a15289abb3657c218b36039432,2024-04-06T00:01:13+02:00,fix LOGBACK-1767,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+49,81ab4ac5b686904cfc879b9df1e640218a9fa5dd,2024-04-07T19:56:44+02:00,added more javadocs,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+50,aa6897827270c3bc08b49121e9a95de4919c74ea,2024-04-07T20:39:38+02:00,add missing  consoleAppender.setWithJansi(true) call,no,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+51,370de39384bd6b33746ce77af392963848c40e29,2024-04-07T20:40:12+02:00,disable LOGBACK_1393_Test,no,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+52,61140ea1005688ae94500d93d191909fd7ef3cfb,2024-04-09T09:37:18+02:00,"fix JaninoEvaluator issue/800, prepare release 1.5.4",yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+53,b95d2a0c67c61d57cbf6ef1a2fa63d6199a73641,2024-04-09T10:55:05+02:00,start work on 1.5.5-SNAPSHOT,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,61,0,0,61
+54,af92be47a940393e11decab0a7ee4cb802d2b5e8,2024-04-10T18:30:23+02:00,"migrate IncludeAction code to IncludeModelHandler, LOGBACK-1746",yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,55,6,0,55
+55,5a41c892002012550f207e45d3de57ccbfb6d259,2024-04-10T22:11:45+02:00,fix IncludeActionTest,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,55,0,0,55
+56,a649c605be4c88a9f6020cc7eb1738abd01026a2,2024-04-10T22:15:12+02:00,rename IncludeActionTest as IncludeModelHandlerTest,no,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,55,0,0,55
+57,4476edd0f3415008506bdaa23ce855b3eae5086a,2024-04-11T21:45:47+02:00,"Search for @NoAutoStart annotations in ancestor hierarchy, implemented interfaces and meta-annotations (#531)",yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,55,0,0,55
+58,f32ed30166307385236b9f373103bd708e2f6857,2024-04-11T21:52:01+02:00,remove support for metaannotations for NoAutoStart annotation,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,55,0,0,55
+59,f9c04d2b5562e44997a80e350b88960cbf3a0bb1,2024-04-12T16:12:09+02:00,test inclusion with conditionals,no,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,55,0,0,55
+60,7db87970b7fae4741c36a04c4283ba8ca1d8b3cb,2024-04-12T18:25:48+02:00,upgrade build to slf4j 2.0.13,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,55,0,0,55
+61,c7c5e89a857bba3fc09f1912cc912b25ee124505,2024-04-12T18:26:45+02:00,prepare release 1.5.5,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,55,0,0,55
+62,a91d2b6a562ac67e6bc247c7c7d8ed48d8479867,2024-04-12T19:15:01+02:00,notes about javadocs,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,55,0,0,55
+63,3d5563899f3f9a2524d37333017007a291e37e79,2024-04-12T19:15:46+02:00,start work on 1.5.6-SNAPSHOT,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,55,0,0,55
+64,759fc25ee384354a9159e64aa1fb7269d770fce4,2024-04-17T17:43:33+02:00,"fix issues/805 i.e. LOGBACK-1768, included file with inner conditional",yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,55,0,0,55
+65,7812a55f3280fbb74076b2512a06dd34230a83f1,2024-04-17T19:38:56+02:00,prepare release 1.5.6,yes,evaluate,2,39,39,0,0,39,2,179,179,0,0,179,2,61,55,0,0,55
+65,7812a55f3280fbb74076b2512a06dd34230a83f1,2024-04-17T19:38:56+02:00,prepare release 1.5.6,yes,regenerate,3,39,39,0,0,39,3,171,171,0,0,171,3,34,34,0,0,34
+66,3cf585a1b44d7e69a5a61703db5d3bbbefd6125b,2024-04-22T15:27:04+02:00,start work on 1.5.7-SNAPSHOT,yes,evaluate,3,39,39,0,0,39,3,171,171,0,0,171,3,34,34,0,0,34
+67,cb1bf60d003da046737c24010b5e3888672b47ed,2024-04-29T17:38:46+03:00,update copyright year in LICENSE.txt,no,evaluate,3,39,39,0,0,39,3,171,171,0,0,171,3,34,34,0,0,34
+68,275299b5fabf3d5559ec927e9a9d85b95ba26a98,2024-04-29T20:25:50+02:00,adapt InvocationTest to more recent versions of slf4j,no,evaluate,3,39,39,0,0,39,3,171,171,0,0,171,3,34,34,0,0,34
+69,f8e4e78cbe93a7e3bbcb582ec43845bddc6eea36,2024-04-29T21:46:26+03:00,update github workflow to java version 21,no,evaluate,3,39,39,0,0,39,3,171,171,0,0,171,3,34,34,0,0,34
+70,979d76f3f2847f1c129bcc6295e69187d02e472c,2024-05-10T22:37:32+02:00,fix LOGBACK-1445,no,evaluate,3,39,39,0,0,39,3,171,171,0,0,171,3,34,34,0,0,34
+71,7cc62d96c30965fe6d48e02522a39d7fd14bf3fe,2024-06-24T22:10:56+02:00,add logback-access as a relocated package,yes,evaluate,3,39,39,0,0,39,3,171,171,0,0,171,3,34,34,0,0,34
+72,a33fdd76350499ceb8e5a5ef8c6a76b426000aa4,2024-06-24T22:14:34+02:00,Update out-of-date reference website (#825),no,evaluate,3,39,39,0,0,39,3,171,171,0,0,171,3,34,34,0,0,34
+73,62d1eb11c5159904d0afefba3db0fda17673a47c,2024-08-03T15:30:10+02:00,ongoing work on ConversionRule support,yes,evaluate,3,39,37,2,0,37,3,171,171,0,0,171,3,34,34,0,0,34
+74,538c762ee157efc2ab734f83dbcd9469851c1ab1,2024-08-03T15:39:03+02:00,fix test,no,evaluate,3,39,37,0,0,37,3,171,171,0,0,171,3,34,34,0,0,34
+75,153fed71c928ea6fe0040446310c0157466f8ab8,2024-08-03T18:23:05+02:00,fix RollingCalendarTest JoranConfiguratorTest,no,evaluate,3,39,37,0,0,37,3,171,171,0,0,171,3,34,34,0,0,34
+76,500203f91ef1eb274dddd79fab828cad5808212f,2024-08-08T16:49:41+02:00,bump SLF4J version to 2.0.15,yes,evaluate,3,39,37,0,0,37,3,171,171,0,0,171,3,34,34,0,0,34
+77,e7d945906d3b1562c59a90906b55532c8efd83ab,2024-08-09T16:15:47+02:00,"migrate conversionWord to model based configuration, add MaskedKeyValuePairConverter",yes,evaluate,3,39,37,0,0,37,3,171,167,4,0,167,3,34,34,0,0,34
+78,44fbe63014132d2ceeef9595a49380cfa89f8d56,2024-08-12T11:00:08+02:00,"MaskedKeyValuePairConverter test issues/828,  NPE in AppeanderAttachableImpl issues/822",no,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+79,7c29474416f4e2273f5049699155374fd2c4eaef,2024-08-12T19:07:04+02:00,"add support for finding the console's charset, LOGBACK-1642",no,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+80,c1f21e9e750b82a1e0bb24d3ca01b3659e2c6ea4,2024-08-13T11:59:14+02:00,"add test in relation to variable subsitions for levels, report substitions, LOGBACK-1519",yes,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+81,f7d5cf8257216589024455377595219f7c828d15,2024-08-13T17:37:13+02:00,extract constants for property keys,yes,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+82,c8c46e35e3ab9917eba0a3faae419799d84b0fe3,2024-08-13T18:53:52+02:00,move levelChangePropagator related tests to logback-classic-blackbox,no,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+83,85bed93afaa89e067bb807e83781bffcdadeafc0,2024-08-14T11:41:31+02:00,fix race condition reported in LOGBACK-1362,yes,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+84,94b67db13e099f9198574cfba265429ad8d38810,2024-08-14T11:54:02+02:00,Made `AsyncAppenderBase.isQueueBelowDiscardingThreshold` public to facilitate reporting loss of log events in a health check. (#325),yes,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+85,1b7fe9498d491e367da698bc921323bb11dd4120,2024-08-14T18:11:42+02:00,"add STRICT shortcut for ISO8601 date pattern, fixes LOGBACK-262",yes,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+86,3f572479817c85dbbe016f0eb01088702680852a,2024-08-15T18:13:13+02:00,"only one shutdown hooks allowed, locks during LoggerContext.stop operation, fixes LOGBACK-1551",yes,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+87,5e9f47fc6413386785c09c827814cfeb7095d8da,2024-08-15T18:31:49+02:00,prepare release 1.5.7,yes,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+88,445c7143d2f41978317bd0bada9775bb90685190,2024-08-15T19:33:37+02:00,start work on 1.5.8-SNAPSHOT,yes,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+89,2913292419b7ddd19e21a26cf08f3300d9b4c651,2024-08-28T09:24:25+02:00,disabling failing test,no,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+90,da7ff1e9726dfbbcd78eb235984f379808e0952e,2024-08-28T09:25:52+02:00,more threads and forks while testing,yes,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+91,17a586612836dddf1e07687f7076019c627c023d,2024-08-28T09:31:25+02:00,tomcat is not needed,yes,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+92,466edb7e89e7eee198a6fc1919c4a2325b245156,2024-08-30T16:21:20+02:00,moving to counter based file size computation instead of calling file.length(),yes,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+93,d1172d0ebda38db3c46f8d72096996cb6179a7b8,2024-08-30T23:03:00+02:00,further work on counter-based file size computation instead of periodically calling file.length(),yes,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+94,1a0e76578876c56388549da9f1df2e22b1d6034e,2024-09-03T21:48:24+02:00,minor changes in DateConverter,no,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+95,cb02c5f1a00b93d52afba0a12befb9f234202818,2024-09-03T21:50:03+02:00,adding a simplified PropertyConfigurator,yes,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+96,3007edf77cde2707edaa255f5f00960ae3c8160d,2024-09-04T10:42:38+02:00,remove groovy files,no,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+97,9f4a2bc0cead02e76eb181fb654807407a6071ee,2024-09-04T20:47:48+02:00,further progress on PropertyConfigurator,yes,evaluate,3,39,37,0,0,37,3,171,167,0,0,167,3,34,34,0,0,34
+98,4f9fb1fcb233821a7f89cef0d865fe0c6c7e0c9d,2024-09-06T16:41:36+02:00,reloadable properties configuration,yes,evaluate,3,39,33,4,0,33,3,171,167,0,0,167,3,34,34,0,0,34
+99,4b1329624a213d46d365fe6810e01aee034c63bd,2024-09-06T16:50:22+02:00,less chatty output fixes tests,yes,evaluate,3,39,33,0,0,33,3,171,167,0,0,167,3,34,34,0,0,34
+100,f629363102b67c2d52a48fa5524fc768aadfce5d,2024-09-06T18:57:45+02:00,faster test for propertyConfigurator reloading,yes,evaluate,3,39,33,0,0,33,3,171,167,0,0,167,3,34,34,0,0,34

@@ -1,0 +1,126 @@
+name: logback-regen-policies
+project:
+  repo: /Users/gary/_experiment/logback
+  language: java
+  build: maven
+  module: logback-core            # submodule: test-survival runs Maven at the reactor root with -pl logback-core -am
+  test_framework: junit5
+anchor: "88abf59a18720854f4f55feb8d8f6951cfaf6037"   # tag v_1.4.12 (2023-11-27), on master first-parent
+range:
+  branch: origin/master
+  end: 5761779e16b2f2b29ea04f8900970d29cf57dd95   # master 2026-10-28, 505 first-parent commits after the anchor
+  mode: first-parent
+  limit: 100                      # #1..#100 (ends at f629363). Releases inside: v_1.5.1 (#32), v_1.5.6 (#65)
+  skip_untouched: main-sources
+scope:
+  rule: change-ranked
+  rank_by: change-count
+  min_methods: 3
+  exclude_accessor_heavy: true
+  target_methods: [50, 80]
+  max_dev_scope: 300              # lowered from 400 (2026-11-08)
+  max_classes: 10
+  classes: []
+  min_classes: 1
+dev:
+  discovery: build                # developer candidates = tests the project's own surefire run executes
+  unmapped: exclude
+  stable_runs: 1                  # one passing run at t (decided 2026-11-05)
+  exclude: []                     # add rolling-file or socket tests here if they break the shared JVM
+  groups:
+    - name: dev
+      denominator: project
+      frozen: false
+    - name: dev-scope
+      display: "Dev (scope)"
+      denominator: coverage-scoped
+      derive_from: dev
+model:
+  provider: openrouter
+  name: openai/gpt-oss-120b
+  env_file: /Users/gary/_experiment/KTester/docker/.env
+  env_key: OPENROUTER_API_KEY
+generators:
+  - name: ktester
+    display: KTester
+    method: ktester
+    impl: author-tool
+    tool_path: /Users/gary/_experiment/KTester
+    docker:
+      compose_files:
+        - /Users/gary/_experiment/KTester/docker/compose.yml
+        - /Users/gary/_experiment/KTester/docker/compose.logback.yml
+      service: ktester
+      mounts:
+        /Users/gary/_experiment/logback: /repo
+        /Users/gary/_experiment/KTester: /work
+    params: {fix_tries: 3, temperature: 0.5, workers: 8}
+    rounds: {max: 1}
+  - name: ouedraogo
+    display: Ouédraogo
+    method: ouedraogo
+    impl: native
+    params: {prompts: [ZSL, FSL, CoT, ToT, GToT], temperature: 0.7, max_tokens: 16384}
+    rounds: {max: 2, until_dev_matched: false, stop_after_zero_compile: 2}
+    context:
+      dependency_signatures: {enabled: true, max_types: 15, max_lines: 400}
+    prompt:
+      api_constraint: true
+    postprocess:
+      import_repair: {enabled: true, passes: 2}
+screen:
+  stable_runs: 1
+  dedup: exact-body
+  matching: none
+survival:
+  execution: batch                # one JVM batch per commit; survival and scope line coverage in one pass
+  selection: affected             # rerun only tests whose dependencies changed
+  definition: cumulative-fixed-denominator
+  flaky_rerun: 1
+  build_fail: carry-over
+  environment_errors:
+    patterns: []
+    max_reruns: 3
+    backoff_seconds: 5
+coverage:
+  changed_line: true
+  at_anchor: true
+  groups: alive-entering
+runner:
+  docker:
+    image: survival-java:25
+    mounts:
+      /Users/gary/_experiment/logback: /repo
+    env_file: /Users/gary/_experiment/KTester/docker/.env
+  javac_mode: reused-jvm          # JDK 25 runner only
+  reuse:
+    checkouts: null
+    classpath_cache: null
+  workers: {build: 2, survive: 2, cover: 2}   # Mac mini: 8 GB RAM, Docker memory 5 GB
+  timeouts: {build: 600, compile: 300, test_class: 120}
+  jvm: {launcher: 1g, javac: 512m, jacoco: 1g}
+  cache: {classpath: pom-sha256, node_modules: lockfile-sha256}
+policies:
+  regenerate_developer: false                 # per-policy developer switch below
+  baseline: experiments/commit-survival       # no-regeneration run (read-only)
+  baseline_config: null
+  groups:
+  - dev-scope
+  - ktester
+  - ouedraogo
+  releases:                                   # tags v_1.5.1 (#32) and v_1.5.6 (#65)
+  - "v_1.5.1"
+  - "v_1.5.6"
+  threshold: 0.5
+  max_threshold_triggers: 1
+  generator_overrides:
+    ktester: {params: {fix_tries: 3}}
+  concurrency:
+    ktester: 2
+    ouedraogo: 2
+    dev_selection: 1
+  fill_seed: 20261029
+  set:
+  - {name: release-reset, trigger: release, action: reset, developer: regenerate}
+  - {name: half-reset, trigger: threshold, action: reset, developer: regenerate}
+  - {name: half-fill, trigger: threshold, action: fill, developer: keep}

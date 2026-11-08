@@ -1,0 +1,354 @@
+/****************************************************************************************
+ * PropertySetterTest.java
+ *
+ * JUnit‑4 test suite that exercises every public method of
+ * {@link ch.qos.logback.core.joran.util.PropertySetter}.
+ *
+ * The tests use only the APIs that are part of the supplied source code and the
+ * minimal stub implementations required to create real objects (no mocking
+ * frameworks are used).
+ *
+ * Author:  OpenAI ChatGPT
+ * Date:    2026‑11‑08
+ ****************************************************************************************/
+
+package ch.qos.logback.core.joran.util;
+import ch.qos.logback.core.status.StatusManager;
+
+
+import ch.qos.logback.core.Context;
+import ch.qos.logback.core.StatusManager;
+import ch.qos.logback.core.joran.spi.DefaultNestedComponentRegistry;
+import ch.qos.logback.core.joran.util.beans.BeanDescriptionCache;
+import ch.qos.logback.core.util.AggregationType;
+import ch.qos.logback.core.util.PropertySetterException;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.Map;
+import java.util.concurrent.*;
+
+import static org.junit.Assert.*;
+
+/**
+ * Test suite for {@link PropertySetter}.
+ */
+public class PropertySetterTest {
+
+    /* --------------------------------------------------------------------- *
+     *  Helper classes – very small concrete implementations needed for the *
+     *  test suite.                                                            *
+     * --------------------------------------------------------------------- */
+
+    /**
+     * Minimal {@link Context} implementation – only the methods that are called
+     * by the code under test are provided.  All other methods throw
+     * {@link UnsupportedOperationException}.
+     */
+    private static class SimpleContext implements Context {
+
+        private final StatusManager statusManager = new SimpleStatusManager();
+
+        @Override public StatusManager getStatusManager() { return statusManager; }
+
+        // The following methods are not required for the tests – we simply
+        // throw UnsupportedOperationException to make any accidental usage obvious.
+        @Override public Object getObject(String key) { throw new UnsupportedOperationException(); }
+        @Override public void putObject(String key, Object value) { throw new UnsupportedOperationException(); }
+        @Override public String getProperty(String key) { throw new UnsupportedOperationException(); }
+        @Override public void putProperty(String key, String value) { throw new UnsupportedOperationException(); }
+        @Override public Map<String, String> getCopyOfPropertyMap() { return Collections.emptyMap(); }
+        @Override public String getName() { return "SimpleContext"; }
+        @Override public void setName(String name) { throw new UnsupportedOperationException(); }
+        @Override public long getBirthTime() { return System.currentTimeMillis(); }
+        @Override public Object getConfigurationLock() { return new Object(); }
+        @Override public ScheduledExecutorService getScheduledExecutorService() { return Executors.newSingleThreadScheduledExecutor(); }
+        @Override public ExecutorService getExecutorService() { return Executors.newSingleThreadExecutor(); }
+        @Override public ExecutorService getAlternateExecutorService() { return Executors.newSingleThreadExecutor(); }
+        @Override public void register(ch.qos.logback.core.spi.LifeCycle component) { throw new UnsupportedOperationException(); }
+        @Override public void addScheduledFuture(ScheduledFuture<?> scheduledFuture) { throw new UnsupportedOperationException(); }
+        @Override public ch.qos.logback.core.spi.SequenceNumberGenerator getSequenceNumberGenerator() { throw new UnsupportedOperationException(); }
+        @Override public void setSequenceNumberGenerator(ch.qos.logback.core.spi.SequenceNumberGenerator sequenceNumberGenerator) { throw new UnsupportedOperationException(); }
+        @Override public void addConfigurationEventListener(ch.qos.logback.core.spi.ConfigurationEventListener listener) { throw new UnsupportedOperationException(); }
+        @Override public void fireConfigurationEvent(ch.qos.logback.core.spi.ConfigurationEvent configurationEvent) { throw new UnsupportedOperationException(); }
+    }
+
+    /** Very tiny {@link StatusManager} – only needed so that
+     *  {@link ContextAwareBase} does not NPE when it tries to add a status. */
+    private static class SimpleStatusManager implements StatusManager {
+        @Override public void add(ch.qos.logback.core.status.Status status) {}
+        @Override public int getCount() { return 0; }
+        @Override public java.util.List<ch.qos.logback.core.status.Status> getCopyOfStatusList() { return Collections.emptyList(); }
+        @Override public void add(com.github.tony19.logback.core.status.OnConsoleStatusListener listener) {}
+        @Override public void add(com.github.tony19.logback.core.status.OnConsoleStatusListener listener, int level) {}
+        @Override public void add(com.github.tony19.logback.core.status.OnConsoleStatusListener listener, int level, boolean reset) {}
+        @Override public void reset() {}
+        @Override public void add(com.github.tony19.logback.core.status.StatusListener listener) {}
+        @Override public void remove(com.github.tony19.logback.core.status.StatusListener listener) {}
+        @Override public void add(com.github.tony19.logback.core.status.OnConsoleStatusListener listener, boolean reset) {}
+    }
+
+    /**
+     * Simple bean used throughout the tests.  It contains a mixture of
+     * primitive‑type setters, a String setter, an adder method for a collection
+     * and a complex‑type setter.
+     */
+    public static class TestBean {
+        private String name;
+        private int age;
+        private boolean active;
+        private StringBuilder tag;               // used by addTag(String)
+        private Child child;                     // used by setChild(Child)
+
+        public void setName(String name) { this.name = name; }
+        public String getName() { return name; }
+
+        public void setAge(int age) { this.age = age; }
+        public int getAge() { return age; }
+
+        public void setActive(boolean active) { this.active = active; }
+        public boolean isActive() { return active; }
+
+        // adder for a simple property collection
+        public void addTag(String tag) { this.tag = new StringBuilder(tag); }
+        public StringBuilder getTag() { return tag; }
+
+        // complex property setter
+        public void setChild(Child child) { this.child = child; }
+        public Child getChild() { return child; }
+    }
+
+    /** Simple complex object used for the “complex property” tests. */
+    public static class Child {
+        private final String id;
+        public Child(String id) { this.id = id; }
+        public String getId() { return id; }
+    }
+
+    /**
+     * Subclass of {@link PropertySetter} that records calls to {@code addWarn}
+     * and {@code addError}.  This avoids having to provide a fully‑featured
+     * {@link StatusManager}.
+     */
+    private static class RecordingPropertySetter extends PropertySetter {
+        private String lastWarn;
+        private String lastError;
+
+        public RecordingPropertySetter(BeanDescriptionCache cache, Object obj) {
+            super(cache, obj);
+        }
+
+        @Override
+        public void addWarn(String msg) {
+            lastWarn = msg;
+        }
+
+        @Override
+        public void addWarn(String msg, Throwable ex) {
+            lastWarn = msg + " : " + ex.getMessage();
+        }
+
+        @Override
+        public void addError(String msg) {
+            lastError = msg;
+        }
+
+        @Override
+        public void addError(String msg, Throwable ex) {
+            lastError = msg + " : " + ex.getMessage();
+        }
+
+        public String getLastWarn()   { return lastWarn; }
+        public String getLastError() { return lastError; }
+
+        public void clearMessages() {
+            lastWarn = null;
+            lastError = null;
+        }
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Test fixtures                                                       *
+     * --------------------------------------------------------------------- */
+
+    private BeanDescriptionCache beanCache;
+    private RecordingPropertySetter setter;
+    private TestBean bean;
+
+    @Before
+    public void setUp() {
+        // initialise a real BeanDescriptionCache – it only needs a Context.
+        beanCache = new BeanDescriptionCache(new SimpleContext());
+
+        bean = new TestBean();
+        setter = new RecordingPropertySetter(beanCache, bean);
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Tests for setProperty(String, String)                               *
+     * --------------------------------------------------------------------- */
+
+    @Test
+    public void testSetPropertyString() {
+        setter.setProperty("name", "Alice");
+        assertEquals("Alice", bean.getName());
+
+        // primitive int – conversion from String
+        setter.setProperty("age", "42");
+        assertEquals(42, bean.getAge());
+
+        // primitive boolean – conversion from String
+        setter.setProperty("active", "true");
+        assertTrue(bean.isActive());
+    }
+
+    @Test
+    public void testSetPropertyIgnoresNullValue() {
+        setter.setProperty("name", null);          // should be a no‑op, no warning
+        assertNull(setter.getLastWarn());
+        assertNull(bean.getName());
+    }
+
+    @Test
+    public void testSetPropertyUnknownPropertyEmitsWarn() {
+        setter.setProperty("nonExisting", "value");
+        assertNotNull(setter.getLastWarn());
+        assertTrue(setter.getLastWarn().contains("No setter for property [nonExisting]"));
+    }
+
+    @Test
+    public void testSetPropertyConversionFailureEmitsWarn() {
+        // "age" expects an int – give a non‑numeric value
+        setter.setProperty("age", "notANumber");
+        assertNotNull(setter.getLastWarn());
+        assertTrue(setter.getLastWarn().contains("Failed to set property [age]"));
+        // the property should remain unchanged (default 0)
+        assertEquals(0, bean.getAge());
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Tests for addComplexProperty(String, Object)                        *
+     * --------------------------------------------------------------------- */
+
+    @Test
+    public void testAddComplexPropertyCallsAdder() throws Exception {
+        // The bean has an adder called addTag(String)
+        setter.addComplexProperty("Tag", "myTag");
+        assertNotNull(bean.getTag());
+        assertEquals("myTag", bean.getTag().toString());
+    }
+
+    @Test
+    public void testAddComplexPropertyMissingAdderEmitsError() {
+        setter.addComplexProperty("Missing", new Object());
+        assertNotNull(setter.getLastError());
+        assertTrue(setter.getLastError().contains("Could not find method [addMissing]"));
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Tests for addBasicProperty(String, String)                          *
+     * --------------------------------------------------------------------- */
+
+    @Test
+    public void testAddBasicPropertySuccess() {
+        setter.addBasicProperty("tag", "basicTag");
+        assertNotNull(bean.getTag());
+        assertEquals("basicTag", bean.getTag().toString());
+    }
+
+    @Test
+    public void testAddBasicPropertyNoAdderEmitsError() {
+        setter.addBasicProperty("nonexistent", "value");
+        assertNotNull(setter.getLastError());
+        assertTrue(setter.getLastError().contains("No adder for property [Nonexistent]"));
+    }
+
+    @Test
+    public void testAddBasicPropertyConversionFailureEmitsError() {
+        // adder expects String, conversion never fails – we simulate failure
+        // by temporarily replacing the adder with one that expects an int.
+        // For the purpose of the test we create a second bean with such a method.
+
+        class BeanWithIntAdder {
+            public void addNumber(int n) { /* no‑op */ }
+        }
+        BeanWithIntAdder intBean = new BeanWithIntAdder();
+        RecordingPropertySetter intSetter = new RecordingPropertySetter(beanCache, intBean);
+        intSetter.addBasicProperty("number", "notAnInt");
+        assertNotNull(intSetter.getLastError());
+        assertTrue(intSetter.getLastError().contains("Conversion to type"));
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Tests for setComplexProperty(String, Object)                        *
+     * --------------------------------------------------------------------- */
+
+    @Test
+    public void testSetComplexPropertySuccess() {
+        Child child = new Child("c1");
+        setter.setComplexProperty("child", child);
+        assertSame(child, bean.getChild());
+    }
+
+    @Test
+    public void testSetComplexPropertyMissingSetterEmitsWarn() {
+        setter.setComplexProperty("nonExisting", new Object());
+        assertNotNull(setter.getLastWarn());
+        assertTrue(setter.getLastWarn().contains("Not setter method for property [nonExisting]"));
+    }
+
+    @Test
+    public void testSetComplexPropertySanityCheckFailureEmitsError() {
+        // Pass an object of the wrong type to trigger the assignability check.
+        setter.setComplexProperty("child", "I am a String, not a Child");
+        assertNotNull(setter.getLastError());
+        assertTrue(setter.getLastError().contains("is not assignable"));
+    }
+
+    /* --------------------------------------------------------------------- *
+     *  Tests for auxiliary public methods                                   *
+     * --------------------------------------------------------------------- */
+
+    @Test
+    public void testGetObjClass() {
+        assertEquals(TestBean.class, setter.getObjClass());
+    }
+
+    @Test
+    public void testGetObj() {
+        assertSame(bean, setter.getObj());
+    }
+
+    @Test
+    public void testComputeAggregationTypeDelegates() {
+        // The concrete value depends on the library’s internal rules.
+        // We only assert that the method returns a non‑null enum constant.
+        AggregationType type = setter.computeAggregationType("name");
+        assertNotNull(type);
+    }
+
+    @Test
+    public void testGetClassNameViaImplicitRulesDelegates() {
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+        // No explicit registration – we just verify that the call does not
+        // throw and returns either null or a Class.
+        Class<?> cls = setter.getClassNameViaImplicitRules("child",
+                AggregationType.AS_COMPLEX_PROPERTY, registry);
+        // The result may be null if the library cannot resolve the implicit rule.
+        // The test merely ensures that the method executes without exception.
+        assertTrue(cls == null || cls == Child.class);
+    }
+
+    @Test
+    public void testSetContextPropagatesToAggregationAssessor() {
+        // Create a fresh context and set it on the PropertySetter.
+        SimpleContext newCtx = new SimpleContext();
+        setter.setContext(newCtx);
+        // The AggregationAssessor is package‑private, but we can indirectly verify
+        // that no exception is thrown and that subsequent calls still work.
+        setter.setProperty("name", "Bob");
+        assertEquals("Bob", bean.getName());
+    }
+}

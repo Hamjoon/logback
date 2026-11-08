@@ -1,0 +1,310 @@
+package ch.qos.logback.core.joran.util;
+import ch.qos.logback.core.spi.SequenceNumberGenerator;
+import ch.qos.logback.core.status.StatusManager;
+
+
+import static org.junit.Assert.*;
+
+import java.lang.reflect.Method;
+import java.util.List;
+
+import org.junit.Before;
+import org.junit.Test;
+
+import ch.qos.logback.core.Context;
+import ch.qos.logback.core.StatusManager;
+import ch.qos.logback.core.joran.spi.DefaultNestedComponentRegistry;
+import ch.qos.logback.core.joran.util.beans.BeanDescriptionCache;
+import ch.qos.logback.core.util.AggregationType;
+
+/**
+ * Unit tests for {@link PropertySetter}.  The tests use only the public API
+ * that is present in the supplied source code and the minimal helper classes
+ * defined at the bottom of this file.
+ *
+ * The goal is to exercise every public method of {@code PropertySetter} and to
+ * verify the behaviour for both the happy‑path and typical error conditions
+ * (missing setter/adder, type mismatches, conversion failures, etc.).
+ */
+public class PropertySetterTest {
+
+    private SimpleContext context;
+    private BeanDescriptionCache cache;
+
+    @Before
+    public void setUp() {
+        context = new SimpleContext();
+        cache = new BeanDescriptionCache(context);
+    }
+
+    /* --------------------------------------------------------------
+     *  Tests for setProperty(String, String)
+     * -------------------------------------------------------------- */
+    @Test
+    public void setProperty_stringValue_isSet() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+
+        ps.setProperty("name", "john");
+        assertEquals("john", target.getName());
+
+        ps.setProperty("count", "7");
+        assertEquals(7, target.getCount());
+
+        ps.setProperty("flag", "true");
+        assertTrue(target.isFlag());
+    }
+
+    @Test
+    public void setProperty_unknownProperty_isIgnored() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+
+        // No setter named "unknown" – should not throw and object stays unchanged
+        ps.setProperty("unknown", "value");
+        assertNull(target.getName());
+        assertEquals(0, target.getCount());
+        assertFalse(target.isFlag());
+    }
+
+    @Test
+    public void setProperty_nullValue_isIgnored() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+
+        ps.setProperty("name", null);
+        assertNull(target.getName());
+    }
+
+    /* --------------------------------------------------------------
+     *  Tests for addComplexProperty(String, Object)
+     * -------------------------------------------------------------- */
+    @Test
+    public void addComplexProperty_validAdder_isInvoked() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+
+        NestedComponent nested = new NestedComponent();
+        nested.setValue("inner");
+
+        // SimpleComponent has a method: public void addNested(NestedComponent n)
+        ps.addComplexProperty("Nested", nested);
+        assertSame(nested, target.getNested());
+    }
+
+    @Test
+    public void addComplexProperty_wrongType_isRejected() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+
+        // addNested expects NestedComponent, we give a plain String
+        ps.addComplexProperty("Nested", "not-a-nested");
+        // the field must still be null because the call was rejected
+        assertNull(target.getNested());
+    }
+
+    @Test
+    public void addComplexProperty_missingAdder_logsError() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+
+        // No adder called "addMissing"
+        ps.addComplexProperty("Missing", new Object());
+        // nothing to assert other than the call not throwing an exception
+        assertNull(target.getNested());
+    }
+
+    /* --------------------------------------------------------------
+     *  Tests for addBasicProperty(String, String)
+     * -------------------------------------------------------------- */
+    @Test
+    public void addBasicProperty_validAdder_isInvoked() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+
+        ps.addBasicProperty("item", "basicValue");
+        List<String> items = target.getItems();
+        assertEquals(1, items.size());
+        assertEquals("basicValue", items.get(0));
+    }
+
+    @Test
+    public void addBasicProperty_conversionFailure_isIgnored() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+
+        // addNumber expects Integer – we pass a non‑numeric string.
+        ps.addBasicProperty("number", "notANumber");
+        // The list that would have been populated by addNumber does not exist,
+        // we simply verify that no exception was thrown and the component stayed unchanged.
+        assertTrue(target.getItems().isEmpty());
+    }
+
+    @Test
+    public void addBasicProperty_missingAdder_isReported() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+
+        // No adder called "addMissing"
+        ps.addBasicProperty("missing", "value");
+        // No change to the component
+        assertTrue(target.getItems().isEmpty());
+    }
+
+    /* --------------------------------------------------------------
+     *  Tests for setComplexProperty(String, Object)
+     * -------------------------------------------------------------- */
+    @Test
+    public void setComplexProperty_validSetter_isInvoked() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+
+        NestedComponent nested = new NestedComponent();
+        nested.setValue("deep");
+
+        ps.setComplexProperty("nested", nested);
+        assertSame(nested, target.getNested());
+    }
+
+    @Test
+    public void setComplexProperty_missingSetter_isIgnored() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+
+        ps.setComplexProperty("missing", new Object());
+        // No exception – object stays unchanged
+        assertNull(target.getNested());
+    }
+
+    @Test
+    public void setComplexProperty_typeMismatch_isRejected() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+
+        // setNested expects NestedComponent; we give a String
+        ps.setComplexProperty("nested", "not-a-nested");
+        assertNull(target.getNested());
+    }
+
+    /* --------------------------------------------------------------
+     *  Miscellaneous getters
+     * -------------------------------------------------------------- */
+    @Test
+    public void getObjClass_returnsCorrectClass() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+        assertEquals(SimpleComponent.class, ps.getObjClass());
+    }
+
+    @Test
+    public void getObj_returnsOriginalInstance() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+        assertSame(target, ps.getObj());
+    }
+
+    @Test
+    public void computeAggregationType_delegatesToAssessor() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+
+        // "name" is a simple property → expected AS_BASIC_PROPERTY
+        AggregationType type = ps.computeAggregationType("name");
+        // The exact value depends on the library implementation; we only verify
+        // that a non‑null value is returned.
+        assertNotNull(type);
+    }
+
+    @Test
+    public void getClassNameViaImplicitRules_delegatesWithoutException() {
+        SimpleComponent target = new SimpleComponent();
+        PropertySetter ps = new PropertySetter(cache, target);
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+
+        // Use a property name that does not have an implicit rule – the method
+        // should simply return null (or whatever the library decides) but must not throw.
+        Class<?> clazz = ps.getClassNameViaImplicitRules("unknown", AggregationType.NOT_FOUND, registry);
+        // No NPE should be thrown; result may be null.
+        assertTrue(clazz == null || clazz.isAssignableFrom(Object.class));
+    }
+}
+
+/* -----------------------------------------------------------------------
+ *  Helper classes used by the tests
+ * ----------------------------------------------------------------------- */
+
+/**
+ * Very small {@link Context} implementation that satisfies the interface
+ * contract but does not provide any real functionality.  All methods return
+ * neutral values (null, empty collections, etc.) because the tests only need
+ * a concrete instance to construct {@link BeanDescriptionCache}.
+ */
+class SimpleContext implements Context {
+
+    @Override public StatusManager getStatusManager() { return null; }
+    @Override public Object getObject(String key) { return null; }
+    @Override public void putObject(String key, Object value) {}
+    @Override public String getProperty(String key) { return null; }
+    @Override public void putProperty(String key, String value) {}
+    @Override public java.util.Map<String, String> getCopyOfPropertyMap() { return java.util.Collections.emptyMap(); }
+    @Override public String getName() { return null; }
+    @Override public void setName(String name) {}
+    @Override public long getBirthTime() { return 0L; }
+    @Override public Object getConfigurationLock() { return new Object(); }
+    @Override public java.util.concurrent.ScheduledExecutorService getScheduledExecutorService() { return null; }
+    @Override public java.util.concurrent.ExecutorService getExecutorService() { return null; }
+    @Override public java.util.concurrent.ExecutorService getAlternateExecutorService() { return null; }
+    @Override public void register(ch.qos.logback.core.spi.LifeCycle component) {}
+    @Override public void addScheduledFuture(java.util.concurrent.ScheduledFuture<?> scheduledFuture) {}
+    @Override public ch.qos.logback.core.util.SequenceNumberGenerator getSequenceNumberGenerator() { return null; }
+    @Override public void setSequenceNumberGenerator(ch.qos.logback.core.util.SequenceNumberGenerator sequenceNumberGenerator) {}
+    @Override public void addConfigurationEventListener(ch.qos.logback.core.spi.ConfigurationEventListener listener) {}
+    @Override public void fireConfigurationEvent(ch.qos.logback.core.spi.ConfigurationEvent configurationEvent) {}
+}
+
+/**
+ * A simple component used as the target of {@link PropertySetter}.  It
+ * contains a mixture of setters, an adder for a collection, an adder for a
+ * complex object and a regular complex‑object setter.
+ */
+class SimpleComponent {
+    private String name;
+    private int count;
+    private boolean flag;
+    private final java.util.List<String> items = new java.util.ArrayList<>();
+    private NestedComponent nested;
+
+    // ----- simple setters -------------------------------------------------
+    public void setName(String name) { this.name = name; }
+    public String getName() { return name; }
+
+    public void setCount(int count) { this.count = count; }
+    public int getCount() { return count; }
+
+    public void setFlag(boolean flag) { this.flag = flag; }
+    public boolean isFlag() { return flag; }
+
+    // ----- collection adder (basic property) ----------------------------
+    public void addItem(String item) { this.items.add(item); }
+    public java.util.List<String> getItems() { return items; }
+
+    // ----- adder for a complex property ----------------------------------
+    public void addNested(NestedComponent nested) { this.nested = nested; }
+
+    // ----- complex property setter ---------------------------------------
+    public void setNested(NestedComponent nested) { this.nested = nested; }
+    public NestedComponent getNested() { return nested; }
+
+    // ----- adder used to test conversion failure (expects Integer) -------
+    public void addNumber(Integer number) { /* no‑op for the test */ }
+}
+
+/**
+ * A tiny nested component used to verify handling of complex objects.
+ */
+class NestedComponent {
+    private String value;
+
+    public void setValue(String v) { this.value = v; }
+    public String getValue() { return value; }
+}

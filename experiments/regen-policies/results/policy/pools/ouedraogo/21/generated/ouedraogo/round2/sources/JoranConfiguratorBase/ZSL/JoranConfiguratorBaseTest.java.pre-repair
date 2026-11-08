@@ -1,0 +1,356 @@
+package ch.qos.logback.core.joran;
+
+import static org.junit.Assert.*;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Supplier;
+
+import org.junit.Before;
+import org.junit.Test;
+
+import ch.qos.logback.core.joran.action.*;
+import ch.qos.logback.core.joran.conditional.*;
+import ch.qos.logback.core.joran.sanity.AppenderWithinAppenderSanityChecker;
+import ch.qos.logback.core.joran.sanity.SanityChecker;
+import ch.qos.logback.core.joran.spi.ElementSelector;
+import ch.qos.logback.core.joran.spi.RuleStore;
+import ch.qos.logback.core.joran.spi.SaxEventInterpreter;
+import ch.qos.logback.core.joran.spi.SaxEventInterpretationContext;
+import ch.qos.logback.core.model.Model;
+import ch.qos.logback.core.model.processor.DefaultProcessor;
+import ch.qos.logback.core.spi.ContextAware;
+import ch.qos.logback.core.spi.ContextAwareBase;
+
+/**
+ * Unit tests for {@link JoranConfiguratorBase}.
+ *
+ * The tests instantiate a concrete subclass of {@link JoranConfiguratorBase}
+ * (named {@code TestJoranConfigurator}) and verify the behaviour of the
+ * protected methods that are part of the public contract of the class.
+ *
+ * The test suite deliberately avoids any third‑party mocking framework and
+ * creates lightweight in‑memory implementations of the library interfaces
+ * that are required for the tests.
+ */
+public class JoranConfiguratorBaseTest {
+
+    /**
+     * Concrete subclass of {@link JoranConfiguratorBase} used only for testing.
+     * The generic type parameter is {@code Object} because the type is not
+     * relevant for the exercised behaviour.
+     */
+    private static class TestJoranConfigurator extends JoranConfiguratorBase<Object> {
+        // No additional behaviour – all abstract methods are already
+        // implemented in the base class.
+    }
+
+    /**
+     * Minimal {@link RuleStore} implementation that records the element selectors
+     * and the associated {@link Supplier} instances. It also records the
+     * transparent path parts.
+     */
+    private static class RecordingRuleStore implements RuleStore {
+
+        static class RuleEntry {
+            final ElementSelector selector;
+            final Supplier<?> supplier;
+
+            RuleEntry(ElementSelector selector, Supplier<?> supplier) {
+                this.selector = selector;
+                this.supplier = supplier;
+            }
+        }
+
+        final List<RuleEntry> rules = new ArrayList<>();
+        final List<String> transparentParts = new ArrayList<>();
+
+        @Override
+        public void addRule(ElementSelector elementSelector, String actionClassStr) {
+            // Not used by the class under test – keep for completeness.
+            throw new UnsupportedOperationException("String based rule not supported in test");
+        }
+
+        @Override
+        public void addRule(ElementSelector elementSelector, Supplier<Action> actionSupplier) {
+            rules.add(new RuleEntry(elementSelector, actionSupplier));
+        }
+
+        @Override
+        public Supplier<Action> matchActions(ch.qos.logback.core.joran.spi.ElementPath elementPath) {
+            // Not required for the current tests.
+            return null;
+        }
+
+        @Override
+        public void addTransparentPathPart(String pathPart) {
+            transparentParts.add(pathPart);
+        }
+    }
+
+    /**
+     * A tiny {@link SaxEventInterpreter} subclass that records the supplier
+     * passed to {@code setImplicitActionSupplier}. The concrete superclass
+     * requires a fairly large constructor; we delegate to it with the minimal
+     * arguments required for the test.
+     */
+    private static class TestSaxEventInterpreter extends SaxEventInterpreter {
+
+        private Supplier<?> implicitSupplier;
+
+        public TestSaxEventInterpreter() {
+            // The real constructor needs a Context, RuleStore, ElementPath and a list
+            // of SaxEvent. For the purpose of this test we can safely pass {@code null}
+            // for the first three arguments and an empty list for the events – the
+            // base implementation does not dereference them for the methods we use.
+            super(null, null, null, new ArrayList<>());
+        }
+
+        @Override
+        public void setImplicitActionSupplier(Supplier<Action> actionSupplier) {
+            this.implicitSupplier = actionSupplier;
+            super.setImplicitActionSupplier(actionSupplier);
+        }
+
+        Supplier<?> getImplicitSupplier() {
+            return implicitSupplier;
+        }
+    }
+
+    /**
+     * Dummy {@link SanityChecker} that records whether {@code check(...)} was
+     * invoked and, if it also implements {@link ContextAware}, the context that
+     * was set.
+     */
+    private static class DummySanityChecker implements SanityChecker, ContextAware {
+
+        boolean checkCalled = false;
+        ContextAware contextAware;
+
+        @Override
+        public void check(Model model) {
+            checkCalled = true;
+        }
+
+        @Override
+        public void setContext(ch.qos.logback.core.spi.Context context) {
+            this.contextAware = new ContextAwareBase() {
+                @Override
+                public Context getContext() {
+                    return context;
+                }
+            };
+        }
+
+        @Override
+        public ch.qos.logback.core.spi.Context getContext() {
+            return contextAware == null ? null : contextAware.getContext();
+        }
+
+        @Override
+        public void addStatus(ch.qos.logback.core.status.Status status) {}
+
+        @Override
+        public void addInfo(String msg) {}
+
+        @Override
+        public void addInfo(String msg, Throwable ex) {}
+
+        @Override
+        public void addWarn(String msg) {}
+
+        @Override
+        public void addWarn(String msg, Throwable ex) {}
+
+        @Override
+        public void addError(String msg) {}
+
+        @Override
+        public void addError(String msg, Throwable ex) {}
+    }
+
+    private TestJoranConfigurator configurator;
+
+    @Before
+    public void setUp() {
+        configurator = new TestJoranConfigurator();
+    }
+
+    /**
+     * Verifies that {@code addElementSelectorAndActionAssociations} registers
+     * all expected element selectors and the correct transparent path parts.
+     */
+    @Test
+    public void testAddElementSelectorAndActionAssociations() {
+        RecordingRuleStore ruleStore = new RecordingRuleStore();
+
+        configurator.addElementSelectorAndActionAssociations(ruleStore);
+
+        // Expected selectors (a subset that uniquely identifies the rule set)
+        String[] expectedSelectors = {
+                "*/variable", "*/property", "*/substitutionProperty",
+                "configuration/import", "configuration/timestamp",
+                "configuration/shutdownHook", "configuration/sequenceNumberGenerator",
+                "configuration/serializeModel", "configuration/define",
+                "configuration/evaluator", "configuration/contextProperty",
+                "configuration/conversionRule", "configuration/statusListener",
+                "*/appender", "configuration/appender/appender-ref",
+                "configuration/newRule", "*/param",
+                "*/if", "*/if/then", "*/if/else", "*/appender/sift"
+        };
+
+        // Verify that each expected selector has been added.
+        for (String selector : expectedSelectors) {
+            boolean found = ruleStore.rules.stream()
+                    .anyMatch(entry -> entry.selector.getPathPattern().equals(selector));
+            assertTrue("Selector '" + selector + "' should be registered", found);
+        }
+
+        // Verify transparent path parts
+        String[] expectedTransparentParts = {"if", "then", "else", "sift"};
+        for (String part : expectedTransparentParts) {
+            assertTrue("Transparent path part '" + part + "' should be registered",
+                    ruleStore.transparentParts.contains(part));
+        }
+    }
+
+    /**
+     * Ensures that {@code sanityCheck} creates an {@link AppenderWithinAppenderSanityChecker}
+     * and invokes {@code performCheck} with it.
+     */
+    @Test
+    public void testSanityCheckDelegatesToPerformCheck() throws Exception {
+        // Subclass the configurator to capture the SanityChecker passed to
+        // performCheck.
+        class CapturingConfigurator extends TestJoranConfigurator {
+            SanityChecker capturedChecker;
+
+            @Override
+            protected void performCheck(SanityChecker sc, Model model) {
+                this.capturedChecker = sc;
+                // Do not invoke the real checker – we only want to capture it.
+            }
+        }
+
+        CapturingConfigurator cfg = new CapturingConfigurator();
+        Model dummyModel = new Model(); // simple model instance
+
+        cfg.sanityCheck(dummyModel);
+
+        assertNotNull("SanityChecker should have been captured", cfg.capturedChecker);
+        assertTrue("Captured checker must be an instance of AppenderWithinAppenderSanityChecker",
+                cfg.capturedChecker instanceof AppenderWithinAppenderSanityChecker);
+    }
+
+    /**
+     * Verifies that {@code performCheck} sets the context on a {@link ContextAware}
+     * {@link SanityChecker} and then calls {@code check(...)}.
+     */
+    @Test
+    public void testPerformCheckSetsContextAndInvokesCheck() {
+        DummySanityChecker dummyChecker = new DummySanityChecker();
+        Model dummyModel = new Model();
+
+        // The configurator inherits ContextAwareBase; we set a dummy context
+        // (null is acceptable for the purpose of this test).
+        configurator.setContext(null);
+
+        // Invoke the protected method via an accessible wrapper.
+        configurator.performCheck(dummyChecker, dummyModel);
+
+        assertTrue("Dummy sanity checker should have received check()", dummyChecker.checkCalled);
+        // The context passed to the checker should be the same as the configurator's context (null).
+        assertNull("Context passed to checker should be null (as set above)",
+                dummyChecker.getContext());
+    }
+
+    /**
+     * Tests that {@code setImplicitRuleSupplier} registers the supplier that creates
+     * {@link ImplicitModelAction} instances.
+     */
+    @Test
+    public void testSetImplicitRuleSupplier() {
+        TestSaxEventInterpreter interpreter = new TestSaxEventInterpreter();
+
+        configurator.setImplicitRuleSupplier(interpreter);
+
+        Supplier<?> supplier = interpreter.getImplicitSupplier();
+        assertNotNull("Implicit supplier must have been set", supplier);
+
+        // The supplier should produce an instance of ImplicitModelAction.
+        Object action = supplier.get();
+        assertTrue("Supplier must create an ImplicitModelAction",
+                action instanceof ImplicitModelAction);
+    }
+
+    /**
+     * Checks that {@code getInterpretationContext} simply forwards the call to the
+     * underlying {@link SaxEventInterpreter}.
+     */
+    @Test
+    public void testGetInterpretationContext() throws Exception {
+        // Prepare a real SaxEventInterpreter with a real SaxEventInterpretationContext.
+        // The concrete classes require a Context; we can safely pass {@code null}
+        // because the test does not depend on any context behaviour.
+        SaxEventInterpreter interpreter = new SaxEventInterpreter(
+                null,
+                new RecordingRuleStore(),
+                null,
+                new ArrayList<>());
+
+        // Use reflection to inject the interpreter into the configurator.
+        java.lang.reflect.Field field = GenericXMLConfigurator.class.getDeclaredField("saxEventInterpreter");
+        field.setAccessible(true);
+        field.set(configurator, interpreter);
+
+        SaxEventInterpretationContext ctx = configurator.getInterpretationContext();
+        assertNotNull("Interpretation context must not be null", ctx);
+        // The returned context must be the one owned by the interpreter.
+        assertSame("Returned context should be the interpreter's context",
+                interpreter.getSaxEventInterpretationContext(), ctx);
+    }
+
+    /**
+     * Verifies that {@code addModelHandlerAssociations} adds handlers for the
+     * expected model classes. The test inspects the internal handler map of
+     * {@link DefaultProcessor} via reflection.
+     */
+    @Test
+    public void testAddModelHandlerAssociations() throws Exception {
+        // Create a DefaultProcessor with dummy arguments.
+        DefaultProcessor processor = new DefaultProcessor(null, null);
+
+        configurator.addModelHandlerAssociations(processor);
+
+        // The DefaultProcessor stores handlers in a private field named
+        // "handlerMap".  We inspect it via reflection.
+        java.lang.reflect.Field mapField = DefaultProcessor.class.getDeclaredField("handlerMap");
+        mapField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<Class<?>, ?> handlerMap = (java.util.Map<Class<?>, ?>) mapField.get(processor);
+
+        // Expected model classes that should have a registered handler.
+        Class<?>[] expectedModels = {
+                ImportModel.class,
+                ShutdownHookModel.class,
+                SequenceNumberGeneratorModel.class,
+                EventEvaluatorModel.class,
+                DefineModel.class,
+                IncludeModel.class,
+                ParamModel.class,
+                PropertyModel.class,
+                TimestampModel.class,
+                StatusListenerModel.class,
+                ImplicitModel.class,
+                IfModel.class,
+                ThenModel.class,
+                ElseModel.class,
+                SiftModel.class
+        };
+
+        for (Class<?> modelClass : expectedModels) {
+            assertTrue("Handler for model " + modelClass.getSimpleName() + " should be registered",
+                    handlerMap.containsKey(modelClass));
+        }
+    }
+}

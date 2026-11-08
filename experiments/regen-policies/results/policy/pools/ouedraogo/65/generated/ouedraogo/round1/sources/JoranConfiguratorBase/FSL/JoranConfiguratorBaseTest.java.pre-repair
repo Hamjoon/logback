@@ -1,0 +1,208 @@
+package ch.qos.logback.core.joran;
+
+import static org.junit.Assert.*;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Supplier;
+
+import org.junit.Before;
+import org.junit.Test;
+
+import ch.qos.logback.core.joran.action.AppenderAction;
+import ch.qos.logback.core.joran.action.ImportAction;
+import ch.qos.logback.core.joran.action.SiftAction;
+import ch.qos.logback.core.joran.action.ThenAction;
+import ch.qos.logback.core.joran.action.ElseAction;
+import ch.qos.logback.core.joran.conditional.IfAction;
+import ch.qos.logback.core.joran.sanity.AppenderWithinAppenderSanityChecker;
+import ch.qos.logback.core.joran.spi.ElementSelector;
+import ch.qos.logback.core.joran.spi.RuleStore;
+import ch.qos.logback.core.joran.spi.SaxEventInterpreter;
+import ch.qos.logback.core.joran.spi.SaxEventInterpretationContext;
+import ch.qos.logback.core.model.Model;
+import ch.qos.logback.core.action.Action;
+
+/**
+ * Unit tests for {@link JoranConfiguratorBase}. The tests exercise all
+ * non‑abstract protected methods of the class.  A concrete subclass
+ * {@code TestJoranConfigurator} is defined solely for the purpose of
+ * exercising the base class behaviour.
+ */
+public class JoranConfiguratorBaseTest {
+
+    /** a concrete, minimal subclass used for testing */
+    private static class TestJoranConfigurator extends JoranConfiguratorBase<Object> {
+        // no additional behaviour – we inherit everything that we need.
+    }
+
+    private TestJoranConfigurator configurator;
+    private RuleStore ruleStore;
+
+    @Before
+    public void setUp() {
+        configurator = new TestJoranConfigurator();
+        // GenericXMLConfigurator creates a concrete RuleStore implementation.
+        ruleStore = configurator.getRuleStore();
+    }
+
+    /**
+     * Helper that creates an {@link ElementPath} instance for a given
+     * XPath‑like string.  The {@code ElementPath} class is part of the
+     * Logback internals and is not part of the public API used in the
+     * assignment, therefore we create it via reflection.
+     */
+    private Object makeElementPath(String path) throws Exception {
+        Class<?> epClass = Class.forName("ch.qos.logback.core.joran.spi.ElementPath");
+        // Try a constructor that accepts a single String argument.
+        try {
+            Constructor<?> ctor = epClass.getDeclaredConstructor(String.class);
+            ctor.setAccessible(true);
+            return ctor.newInstance(path);
+        } catch (NoSuchMethodException e) {
+            // Fallback: use the no‑arg constructor and then call the
+            // addElement(String) method for each part.
+            Constructor<?> ctor = epClass.getDeclaredConstructor();
+            ctor.setAccessible(true);
+            Object ep = ctor.newInstance();
+            Method addElement = epClass.getDeclaredMethod("addElement", String.class);
+            addElement.setAccessible(true);
+            for (String part : path.split("/")) {
+                addElement.invoke(ep, part);
+            }
+            return ep;
+        }
+    }
+
+    /**
+     * Verify that {@code addElementSelectorAndActionAssociations} registers
+     * the expected selectors and that the associated {@link Action}
+     * suppliers produce the correct concrete {@link Action} types.
+     */
+    @Test
+    public void testAddElementSelectorAndActionAssociations() throws Exception {
+        // Populate the rule store using the method under test.
+        configurator.addElementSelectorAndActionAssociations(ruleStore);
+
+        // Helper to assert that a selector maps to the expected Action class.
+        java.util.function.BiConsumer<String, Class<? extends Action>> assertMapping = (selector, expected) -> {
+            try {
+                Object elementPath = makeElementPath(selector);
+                @SuppressWarnings("unchecked")
+                Supplier<Action> supplier = (Supplier<Action>) ruleStore.matchActions((ch.qos.logback.core.joran.spi.ElementPath) elementPath);
+                assertNotNull("No supplier for selector '" + selector + "'", supplier);
+                Action action = supplier.get();
+                assertNotNull("Supplier returned null for selector '" + selector + "'", action);
+                assertTrue("Action for selector '" + selector + "' is not a " + expected.getSimpleName(),
+                        expected.isInstance(action));
+            } catch (Exception ex) {
+                fail("Exception while testing selector '" + selector + "': " + ex);
+            }
+        };
+
+        // Core selectors
+        assertMapping.accept("configuration/import", ImportAction.class);
+        assertMapping.accept("configuration/appender", AppenderAction.class);
+        assertMapping.accept("configuration/appender/sift", SiftAction.class);
+        assertMapping.accept("*/if", IfAction.class);
+        assertMapping.accept("*/if/then", ThenAction.class);
+        assertMapping.accept("*/if/else", ElseAction.class);
+    }
+
+    /**
+     * The {@code sanityCheck} method delegates to {@code performCheck} with an
+     * {@link AppenderWithinAppenderSanityChecker}.  The test simply ensures
+     * that the call completes without throwing and that the checker receives
+     * the configurator's context.
+     */
+    @Test
+    public void testSanityCheckDoesNotThrow() {
+        // The Model class is concrete; an empty model is sufficient.
+        Model model = new Model();
+        try {
+            configurator.sanityCheck(model);
+        } catch (Exception e) {
+            fail("sanityCheck threw an unexpected exception: " + e);
+        }
+    }
+
+    /**
+     * The {@code setImplicitRuleSupplier} method must install a supplier that
+     * creates {@link ImplicitModelAction} instances.  We verify that after the
+     * call the interpreter holds a non‑null supplier and that invoking the
+     * supplier yields an {@link Action} of the expected type.
+     */
+    @Test
+    public void testSetImplicitRuleSupplier() throws Exception {
+        // Build a minimal SaxEventInterpreter.  The constructor tolerates a
+        // null Context and a null initial ElementPath for the purpose of this
+        // test (the interpreter is never used to process a real document).
+        List<Object> emptyEvents = new ArrayList<>();
+        SaxEventInterpreter interpreter = new SaxEventInterpreter(
+                null,                     // Context (null is acceptable for this test)
+                ruleStore,                // RuleStore
+                null,                     // initialElementPath
+                emptyEvents);             // saxEvents
+
+        // Apply the protected method via reflection.
+        Method m = JoranConfiguratorBase.class.getDeclaredMethod("setImplicitRuleSupplier", SaxEventInterpreter.class);
+        m.setAccessible(true);
+        m.invoke(configurator, interpreter);
+
+        // The interpreter does not expose the supplier directly, but we can
+        // obtain it via the protected field "implicitActionSupplier" using
+        // reflection.
+        java.lang.reflect.Field f = SaxEventInterpreter.class.getDeclaredField("implicitActionSupplier");
+        f.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Supplier<Action> supplier = (Supplier<Action>) f.get(interpreter);
+        assertNotNull("Implicit action supplier should have been set", supplier);
+        Action action = supplier.get();
+        assertNotNull("Supplier should produce a non‑null Action", action);
+        assertEquals("ImplicitModelAction expected",
+                "ch.qos.logback.core.joran.action.ImplicitModelAction",
+                action.getClass().getName());
+    }
+
+    /**
+     * The {@code buildModelInterpretationContext} method must create the
+     * underlying {@link ModelInterpretationContext} and, afterwards,
+     * {@code getInterpretationContext} should return a non‑null
+     * {@link SaxEventInterpretationContext}.
+     */
+    @Test
+    public void testBuildModelInterpretationContextAndGetInterpretationContext() {
+        configurator.buildModelInterpretationContext();
+        SaxEventInterpretationContext ic = configurator.getInterpretationContext();
+        assertNotNull("Interpretation context must not be null after building", ic);
+    }
+
+    /**
+     * The {@code addModelHandlerAssociations} method registers a number of
+     * handlers with a {@link DefaultProcessor}.  The test invokes the method
+     * and checks that no exception is thrown.  Because {@code DefaultProcessor}
+     * does not expose its internal handler map, we limit the verification to
+     * the successful execution of the method.
+     */
+    @Test
+    public void testAddModelHandlerAssociations() {
+        // Build the ModelInterpretationContext first – it is required by the
+        // DefaultProcessor constructor.
+        configurator.buildModelInterpretationContext();
+
+        // DefaultProcessor requires a Context; we reuse the configurator's
+        // (possibly null) context – the processor does not touch it during
+        // registration of handlers.
+        DefaultProcessor processor = new DefaultProcessor(
+                configurator.getContext(),
+                configurator.getModelInterpretationContext());
+
+        try {
+            configurator.addModelHandlerAssociations(processor);
+        } catch (Exception e) {
+            fail("addModelHandlerAssociations threw an unexpected exception: " + e);
+        }
+    }
+}

@@ -1,0 +1,396 @@
+package ch.qos.logback.core.joran.util;
+import ch.qos.logback.core.spi.ConfigurationEvent;
+import ch.qos.logback.core.spi.ConfigurationEventListener;
+import ch.qos.logback.core.spi.LifeCycle;
+import ch.qos.logback.core.spi.SequenceNumberGenerator;
+import ch.qos.logback.core.status.StatusManager;
+
+
+import ch.qos.logback.core.Context;
+import ch.qos.logback.core.joran.spi.DefaultNestedComponentRegistry;
+import ch.qos.logback.core.joran.util.beans.BeanDescriptionCache;
+import ch.qos.logback.core.util.AggregationType;
+import ch.qos.logback.core.util.PropertySetterException;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.util.*;
+import java.util.concurrent.*;
+
+import static org.junit.Assert.*;
+
+/**
+ * JUnit‑4 test suite for {@link PropertySetter}.
+ *
+ * The suite follows the steps requested:
+ *
+ * <ol>
+ *   <li>List all public methods (see the comment block at the top of the file).</li>
+ *   <li>Provide a basic test for each public method.</li>
+ *   <li>Identify edge‑cases and exception scenarios.</li>
+ *   <li>Provide dedicated tests for those edge‑cases.</li>
+ *   <li>All tests are combined in a single file that starts with “###Test START##” and ends with “###Test END##”.</li>
+ * </ol>
+ *
+ * The tests use real implementations – no mocking frameworks are used.
+ * A tiny {@link SimpleContext} implementation satisfies the {@link Context}
+ * contract for the purpose of the tests.
+ * A {@link RecordingPropertySetter} subclass of {@link PropertySetter}
+ * records calls to {@code addWarn}/{@code addError} so that the tests can
+ * assert on the messages that would normally be logged.
+ */
+public class PropertySetterTest {
+
+    /* ---------------------------------------------------------------------- */
+    /* 1.  Public API of PropertySetter (extracted from the source)           */
+    /* ---------------------------------------------------------------------- */
+    //
+    // public PropertySetter(BeanDescriptionCache beanDescriptionCache, Object obj)
+    // public void setContext(Context context)
+    // public void setProperty(String name, String value)
+    // public AggregationType computeAggregationType(String name)
+    // public Class<?> getObjClass()
+    // public void addComplexProperty(String name, Object complexProperty)
+    // public void addBasicProperty(String name, String strValue)
+    // public void setComplexProperty(String name, Object complexProperty)
+    // public Object getObj()
+    // public Class<?> getClassNameViaImplicitRules(String name,
+    //        AggregationType aggregationType,
+    //        DefaultNestedComponentRegistry registry)
+    // -------------------------------------------------------------------------
+
+    /* ---------------------------------------------------------------------- */
+    /* Helper classes used by the tests                                        */
+    /* ---------------------------------------------------------------------- */
+
+    /**
+     * Minimal {@link Context} implementation – only the methods used by the
+     * classes under test are actually implemented; the rest throw
+     * {@link UnsupportedOperationException}.
+     */
+    private static class SimpleContext implements Context {
+        private final Map<String, Object> objectMap = new HashMap<>();
+        private final Map<String, String> propertyMap = new HashMap<>();
+
+        @Override public StatusManager getStatusManager() { throw new UnsupportedOperationException(); }
+        @Override public Object getObject(String key) { return objectMap.get(key); }
+        @Override public void putObject(String key, Object value) { objectMap.put(key, value); }
+        @Override public String getProperty(String key) { return propertyMap.get(key); }
+        @Override public void putProperty(String key, String value) { propertyMap.put(key, value); }
+        @Override public Map<String, String> getCopyOfPropertyMap() { return new HashMap<>(propertyMap); }
+        @Override public String getName() { return "simple"; }
+        @Override public void setName(String name) { /* no‑op */ }
+        @Override public long getBirthTime() { return System.currentTimeMillis(); }
+        @Override public Object getConfigurationLock() { return this; }
+        @Override public ScheduledExecutorService getScheduledExecutorService() { return Executors.newSingleThreadScheduledExecutor(); }
+        @Override public ExecutorService getExecutorService() { return Executors.newSingleThreadExecutor(); }
+        @Override public ExecutorService getAlternateExecutorService() { return getExecutorService(); }
+        @Override public void register(LifeCycle component) { /* no‑op */ }
+        @Override public void addScheduledFuture(ScheduledFuture<?> scheduledFuture) { /* no‑op */ }
+        @Override public SequenceNumberGenerator getSequenceNumberGenerator() { throw new UnsupportedOperationException(); }
+        @Override public void setSequenceNumberGenerator(SequenceNumberGenerator sequenceNumberGenerator) { throw new UnsupportedOperationException(); }
+        @Override public void addConfigurationEventListener(ConfigurationEventListener listener) { throw new UnsupportedOperationException(); }
+        @Override public void fireConfigurationEvent(ConfigurationEvent configurationEvent) { throw new UnsupportedOperationException(); }
+    }
+
+    /**
+     * Simple bean used by the tests.  It contains a mixture of
+     * <ul>
+     *   <li>standard setters (String, int, boolean)</li>
+     *   <li>adder methods for basic and complex properties</li>
+     *   <li>setter for a complex property</li>
+     * </ul>
+     * All mutators record the values they receive so that the tests can
+     * assert on the side‑effects.
+     */
+    public static class TestBean {
+        private String name;
+        private int age;
+        private boolean male;
+        private String basicAdded;
+        private ComplexObject complexAdded;
+        private ComplexObject complexSet;
+
+        // ----- standard setters -------------------------------------------------
+        public void setName(String name) { this.name = name; }
+        public void setAge(int age) { this.age = age; }
+        public void setMale(boolean male) { this.male = male; }
+
+        // ----- adder for a basic (String) property -------------------------------
+        public void addName(String name) { this.basicAdded = name; }
+
+        // ----- adder for a complex property --------------------------------------
+        public void addItem(ComplexObject obj) { this.complexAdded = obj; }
+
+        // ----- setter for a complex property -------------------------------------
+        public void setItem(ComplexObject obj) { this.complexSet = obj; }
+
+        // ----- getters used by assertions ----------------------------------------
+        public String getName() { return name; }
+        public int getAge() { return age; }
+        public boolean isMale() { return male; }
+        public String getBasicAdded() { return basicAdded; }
+        public ComplexObject getComplexAdded() { return complexAdded; }
+        public ComplexObject getComplexSet() { return complexSet; }
+    }
+
+    /** Simple POJO used as a “complex” property. */
+    public static class ComplexObject {
+        private final String id;
+        public ComplexObject(String id) { this.id = id; }
+        public String getId() { return id; }
+    }
+
+    /**
+     * Subclass of {@link PropertySetter} that records messages sent to the
+     * {@code addWarn}/{@code addError} methods.  This enables assertions on the
+     * internal logging behaviour without needing a full logging infrastructure.
+     */
+    private static class RecordingPropertySetter extends PropertySetter {
+        final List<String> warnings = new ArrayList<>();
+        final List<String> errors   = new ArrayList<>();
+
+        public RecordingPropertySetter(BeanDescriptionCache cache, Object obj) {
+            super(cache, obj);
+        }
+
+        @Override
+        public void addWarn(String msg) {
+            warnings.add(msg);
+        }
+
+        @Override
+        public void addWarn(String msg, Throwable ex) {
+            warnings.add(msg + " EX:" + ex.getClass().getSimpleName());
+        }
+
+        @Override
+        public void addError(String msg) {
+            errors.add(msg);
+        }
+
+        @Override
+        public void addError(String msg, Throwable ex) {
+            errors.add(msg + " EX:" + ex.getClass().getSimpleName());
+        }
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* Test fixtures                                                          */
+    /* ---------------------------------------------------------------------- */
+
+    private SimpleContext simpleContext;
+    private BeanDescriptionCache beanCache;
+    private TestBean bean;
+    private RecordingPropertySetter setter;
+
+    @Before
+    public void setUp() {
+        simpleContext = new SimpleContext();
+        beanCache = new BeanDescriptionCache(simpleContext);
+        bean = new TestBean();
+        setter = new RecordingPropertySetter(beanCache, bean);
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* 2. Basic tests for each public method                                 */
+    /* ---------------------------------------------------------------------- */
+
+    @Test
+    public void testGetObjClass() {
+        assertEquals(TestBean.class, setter.getObjClass());
+    }
+
+    @Test
+    public void testGetObj() {
+        assertSame(bean, setter.getObj());
+    }
+
+    @Test
+    public void testSetContextDelegatesToAggregationAssessor() {
+        // The AggregationAssessor stores the context; we just verify that calling
+        // setContext does not throw and that the internal assessor receives it.
+        Context newCtx = new SimpleContext();
+        setter.setContext(newCtx);
+        // No direct accessor – the test succeeds if no exception is thrown.
+    }
+
+    @Test
+    public void testSetProperty_StringValue() {
+        setter.setProperty("name", "John Doe");
+        assertEquals("John Doe", bean.getName());
+    }
+
+    @Test
+    public void testSetProperty_IntValue() {
+        setter.setProperty("age", "42");
+        assertEquals(42, bean.getAge());
+    }
+
+    @Test
+    public void testSetProperty_BooleanValue() {
+        setter.setProperty("male", "true");
+        assertTrue(bean.isMale());
+    }
+
+    @Test
+    public void testSetProperty_NullValueIsIgnored() {
+        setter.setProperty("name", null);
+        assertNull(bean.getName()); // unchanged
+        assertTrue(setter.warnings.isEmpty());
+        assertTrue(setter.errors.isEmpty());
+    }
+
+    @Test
+    public void testSetProperty_NoSuchSetterProducesWarning() {
+        setter.setProperty("nonExisting", "value");
+        assertTrue(setter.warnings.stream()
+                .anyMatch(msg -> msg.contains("No setter for property [nonExisting]")));
+    }
+
+    @Test
+    public void testSetProperty_ConversionFailureProducesWarning() {
+        // "age" expects an int – passing a non‑numeric string triggers conversion failure.
+        setter.setProperty("age", "notANumber");
+        assertTrue(setter.warnings.stream()
+                .anyMatch(msg -> msg.contains("Failed to set property [age]")));
+        // The bean's age must stay at its default value (0)
+        assertEquals(0, bean.getAge());
+    }
+
+    @Test
+    public void testAddBasicProperty_ValidAdder() {
+        setter.addBasicProperty("name", "basicValue");
+        assertEquals("basicValue", bean.getBasicAdded());
+    }
+
+    @Test
+    public void testAddBasicProperty_NoAdderProducesError() {
+        setter.addBasicProperty("unknown", "value");
+        assertTrue(setter.errors.stream()
+                .anyMatch(msg -> msg.contains("No adder for property [Unknown]")));
+    }
+
+    @Test
+    public void testAddBasicProperty_ConversionFailureProducesError() {
+        // The adder expects a String, so conversion never fails.
+        // To force a failure we create a bean with an int adder.
+        TestBeanWithIntAdder beanWithInt = new TestBeanWithIntAdder();
+        RecordingPropertySetter ps = new RecordingPropertySetter(beanCache, beanWithInt);
+        ps.addBasicProperty("number", "abc"); // "abc" cannot be converted to int
+        assertTrue(ps.errors.stream()
+                .anyMatch(msg -> msg.contains("Conversion to type [int] failed")));
+    }
+
+    @Test
+    public void testAddComplexProperty_ValidAdder() {
+        ComplexObject co = new ComplexObject("c1");
+        setter.addComplexProperty("Item", co);
+        assertSame(co, bean.getComplexAdded());
+    }
+
+    @Test
+    public void testAddComplexProperty_NoAdderProducesError() {
+        setter.addComplexProperty("Missing", new ComplexObject("x"));
+        assertTrue(setter.errors.stream()
+                .anyMatch(msg -> msg.contains("Could not find method [addMissing]")));
+    }
+
+    @Test
+    public void testAddComplexProperty_TypeMismatchProducesError() {
+        // The adder expects ComplexObject – pass a String to trigger the assignability check.
+        setter.addComplexProperty("Item", "notAComplexObject");
+        assertTrue(setter.errors.stream()
+                .anyMatch(msg -> msg.contains("object is not assignable")));
+    }
+
+    @Test
+    public void testSetComplexProperty_ValidSetter() {
+        ComplexObject co = new ComplexObject("c2");
+        setter.setComplexProperty("Item", co);
+        assertSame(co, bean.getComplexSet());
+    }
+
+    @Test
+    public void testSetComplexProperty_NoSetterProducesWarning() {
+        setter.setComplexProperty("Missing", new ComplexObject("c3"));
+        assertTrue(setter.warnings.stream()
+                .anyMatch(msg -> msg.contains("Not setter method for property [Missing]")));
+    }
+
+    @Test
+    public void testSetComplexProperty_TypeMismatchProducesError() {
+        setter.setComplexProperty("Item", "stringInsteadOfComplex");
+        assertTrue(setter.errors.stream()
+                .anyMatch(msg -> msg.contains("object is not assignable")));
+    }
+
+    @Test
+    public void testComputeAggregationTypeDelegates() {
+        // The actual value depends on the internal logic of AggregationAssessor.
+        // We only assert that a non‑null value is returned and that the method does not throw.
+        AggregationType type = setter.computeAggregationType("name");
+        assertNotNull(type);
+    }
+
+    @Test
+    public void testGetClassNameViaImplicitRulesDelegates() {
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+        // No explicit rule is added – the method is expected to return null.
+        Class<?> result = setter.getClassNameViaImplicitRules("any", AggregationType.AS_BASIC_PROPERTY, registry);
+        // The return can be null (no rule) – the test ensures the call completes.
+        // No assert on the value itself, just that we reach this point without exception.
+        assertTrue(true);
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* 3. Edge‑case / exception specific tests                               */
+    /* ---------------------------------------------------------------------- */
+
+    @Test(expected = NullPointerException.class)
+    public void testConstructor_NullBeanDescriptionCacheThrows() {
+        // Passing a null cache should trigger a NPE when the constructor accesses it.
+        new PropertySetter(null, new Object());
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testConstructor_NullTargetObjectThrows() {
+        // The constructor dereferences obj.getClass(), so a null target must NPE.
+        new PropertySetter(beanCache, null);
+    }
+
+    @Test
+    public void testIsSanityCheckSuccessful_PrivateMethodBehaviour() throws Exception {
+        // Directly invoke the private method via reflection to ensure the
+        // assignability logic works as expected.
+        Method sanity = PropertySetter.class.getDeclaredMethod(
+                "isSanityCheckSuccessful", String.class, Method.class, Class[].class, Object.class);
+        sanity.setAccessible(true);
+
+        // Prepare a method that expects ComplexObject
+        Method setterMethod = TestBean.class.getMethod("setItem", ComplexObject.class);
+        Class<?>[] paramTypes = setterMethod.getParameterTypes();
+
+        // Correct type – should return true
+        boolean ok = (boolean) sanity.invoke(setter, "Item", setterMethod, paramTypes, new ComplexObject("x"));
+        assertTrue(ok);
+
+        // Wrong type – should return false and record an error
+        boolean notOk = (boolean) sanity.invoke(setter, "Item", setterMethod, paramTypes, "string");
+        assertFalse(notOk);
+        assertTrue(setter.errors.stream()
+                .anyMatch(msg -> msg.contains("is not assignable")));
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* Helper bean with an int adder (used by a conversion‑failure test)      */
+    /* ---------------------------------------------------------------------- */
+    public static class TestBeanWithIntAdder {
+        private int number;
+
+        public void addNumber(int n) { this.number = n; }
+
+        public int getNumber() { return number; }
+    }
+
+}

@@ -1,0 +1,474 @@
+{
+  "environment_reruns": {
+    "dev-scope": 0,
+    "ktester": 0,
+    "ouedraogo": 0
+  },
+  "environment_rerun_unit": "method attempts; derived groups inherit their source observations",
+  "status": "completed-with-unavailable-measurements",
+  "finished": "2026-11-08T03:25:43.893568+00:00",
+  "denominators": {
+    "dev-scope": 45,
+    "ktester": 159,
+    "ouedraogo": 169
+  },
+  "final_survivors": {
+    "dev-scope": 10,
+    "ktester": 145,
+    "ouedraogo": 47
+  },
+  "model_rounds": {
+    "ktester": {
+      "config_hash": "fa6360ef3d78a2c1bd469f04c4821e57d2f3420b76d84f39989c9fda2ac015b5",
+      "rounds": [
+        {
+          "round": 1,
+          "directory": "round1",
+          "funnel": {
+            "group": "ktester",
+            "round": "round1",
+            "files": 52,
+            "compiled": 26,
+            "methods": 466,
+            "stable_runs": 1,
+            "stable_passed": 159,
+            "duplicates": 0,
+            "kept_this_round": 159,
+            "total_kept": 159,
+            "developer_denominator": 526,
+            "ratio_to_dev": 0.30228136882129275,
+            "per_prompt": {
+              "KTester": {
+                "files": 52,
+                "compiled": 26,
+                "methods": 466,
+                "stable": 159,
+                "duplicates": 0,
+                "kept": 159
+              }
+            },
+            "dev_unmapped_excluded": 0,
+            "notes": []
+          },
+          "model_calls": 284
+        }
+      ],
+      "stopped": "max-rounds"
+    },
+    "ouedraogo": {
+      "config_hash": "8ccb1afbaf5f36105097d08eaa30902304743f579c343bd39c16324237dac82f",
+      "rounds": [
+        {
+          "round": 1,
+          "directory": "round1",
+          "funnel": {
+            "group": "ouedraogo",
+            "round": "round1",
+            "files": 15,
+            "compiled": 5,
+            "methods": 300,
+            "stable_runs": 1,
+            "stable_passed": 128,
+            "duplicates": 6,
+            "kept_this_round": 122,
+            "total_kept": 122,
+            "developer_denominator": 526,
+            "ratio_to_dev": 0.23193916349809887,
+            "per_prompt": {
+              "ZSL": {
+                "files": 3,
+                "compiled": 1,
+                "methods": 59,
+                "stable": 27,
+                "duplicates": 3,
+                "kept": 24
+              },
+              "FSL": {
+                "files": 3,
+                "compiled": 1,
+                "methods": 53,
+                "stable": 28,
+                "duplicates": 1,
+                "kept": 27
+              },
+              "CoT": {
+                "files": 3,
+                "compiled": 1,
+                "methods": 72,
+                "stable": 27,
+                "duplicates": 0,
+                "kept": 27
+              },
+              "ToT": {
+                "files": 3,
+                "compiled": 1,
+                "methods": 51,
+                "stable": 22,
+                "duplicates": 0,
+                "kept": 22
+              },
+              "GToT": {
+                "files": 3,
+                "compiled": 1,
+                "methods": 65,
+                "stable": 24,
+                "duplicates": 2,
+                "kept": 22
+              }
+            },
+            "dev_unmapped_excluded": 0,
+            "notes": []
+          },
+          "model_calls": 15
+        },
+        {
+          "round": 2,
+          "directory": "round2",
+          "funnel": {
+            "group": "ouedraogo",
+            "round": "round2",
+            "files": 15,
+            "compiled": 2,
+            "methods": 314,
+            "stable_runs": 1,
+            "stable_passed": 54,
+            "duplicates": 7,
+            "kept_this_round": 47,
+            "total_kept": 169,
+            "developer_denominator": 526,
+            "ratio_to_dev": 0.32129277566539927,
+            "per_prompt": {
+              "ZSL": {
+                "files": 3,
+                "compiled": 0,
+                "methods": 57,
+                "stable": 0,
+                "duplicates": 0,
+                "kept": 0
+              },
+              "FSL": {
+                "files": 3,
+                "compiled": 1,
+                "methods": 57,
+                "stable": 34,
+                "duplicates": 7,
+                "kept": 27
+              },
+              "CoT": {
+                "files": 3,
+                "compiled": 1,
+                "methods": 64,
+                "stable": 20,
+                "duplicates": 0,
+                "kept": 20
+              },
+              "ToT": {
+                "files": 3,
+                "compiled": 0,
+                "methods": 69,
+                "stable": 0,
+                "duplicates": 0,
+                "kept": 0
+              },
+              "GToT": {
+                "files": 3,
+                "compiled": 0,
+                "methods": 67,
+                "stable": 0,
+                "duplicates": 0,
+                "kept": 0
+              }
+            },
+            "dev_unmapped_excluded": 0,
+            "notes": []
+          },
+          "model_calls": 15
+        }
+      ],
+      "stopped": "max-rounds"
+    }
+  },
+  "phase_seconds": {
+    "prepare": 467.666,
+    "scope": 195.748,
+    "generate": 0.148,
+    "screen": 138.159,
+    "control": 37.781,
+    "survive": 1460.664,
+    "cover": 5.173
+  },
+  "final_verification": {
+    "nonincreasing": true,
+    "raw_count_matches": true,
+    "missing_survival_records": 0,
+    "missing_coverage_records": 9
+  },
+  "survival_consistency": {
+    "nonincreasing": true,
+    "index_zero_equals_denominators": true,
+    "raw_records": 288,
+    "expected_raw_records": 288,
+    "raw_count_matches": true,
+    "missing_records": [],
+    "build_fail_indices": [
+      11,
+      68,
+      70,
+      79
+    ],
+    "measured_raw_records": 288,
+    "derived_raw_records": 0,
+    "expected_measured_raw_records": 288,
+    "expected_derived_raw_records": 0,
+    "skipped_indices": [
+      9,
+      14,
+      23,
+      27,
+      34,
+      42,
+      45,
+      46,
+      47,
+      50,
+      51,
+      56,
+      59,
+      67,
+      69,
+      72,
+      74,
+      75,
+      78,
+      82,
+      89,
+      94,
+      96
+    ]
+  },
+  "coverage_consistency": {
+    "coverage_indices": 60,
+    "production_changes": 45,
+    "identical_executable_line_sets": [
+      0,
+      1,
+      3,
+      4,
+      6,
+      7,
+      8,
+      13,
+      15,
+      16,
+      17,
+      20,
+      21,
+      22,
+      24,
+      25,
+      26,
+      28,
+      29,
+      30,
+      31,
+      33,
+      35,
+      37,
+      38,
+      39,
+      40,
+      41,
+      43,
+      44,
+      48,
+      49,
+      53,
+      54,
+      55,
+      57,
+      58,
+      63,
+      64,
+      71,
+      73,
+      76,
+      77,
+      80,
+      81,
+      83,
+      84,
+      85,
+      86,
+      91,
+      92,
+      93,
+      95,
+      97,
+      98,
+      99,
+      100
+    ],
+    "missing": [
+      {
+        "index": 68,
+        "group": "dev-scope"
+      },
+      {
+        "index": 68,
+        "group": "ktester"
+      },
+      {
+        "index": 68,
+        "group": "ouedraogo"
+      },
+      {
+        "index": 70,
+        "group": "dev-scope"
+      },
+      {
+        "index": 70,
+        "group": "ktester"
+      },
+      {
+        "index": 70,
+        "group": "ouedraogo"
+      },
+      {
+        "index": 79,
+        "group": "dev-scope"
+      },
+      {
+        "index": 79,
+        "group": "ktester"
+      },
+      {
+        "index": 79,
+        "group": "ouedraogo"
+      }
+    ],
+    "zero_executable_change_commits": 37,
+    "unavailable_commits": 2,
+    "totals": {
+      "all": {
+        "executable": null,
+        "dev-scope": null,
+        "ktester": null,
+        "ouedraogo": null
+      },
+      "scope": {
+        "executable": 29,
+        "dev-scope": 21,
+        "ktester": 7,
+        "ouedraogo": 10,
+        "methods_lost_in_listed_commits": {
+          "dev-scope": 28,
+          "ktester": 6,
+          "ouedraogo": 122
+        }
+      },
+      "other": {
+        "executable": null,
+        "dev-scope": null,
+        "ktester": null,
+        "ouedraogo": null
+      }
+    },
+    "baseline": {
+      "src/main/java/ch/qos/logback/core/joran/JoranConfiguratorBase.java": {
+        "executable": 55,
+        "dev-scope": 0,
+        "ktester": 25,
+        "ouedraogo": 0
+      },
+      "src/main/java/ch/qos/logback/core/joran/util/PropertySetter.java": {
+        "executable": 154,
+        "dev-scope": 107,
+        "ktester": 25,
+        "ouedraogo": 133
+      },
+      "src/main/java/ch/qos/logback/core/model/processor/ModelInterpretationContext.java": {
+        "executable": 97,
+        "dev-scope": 54,
+        "ktester": 70,
+        "ouedraogo": 0
+      }
+    }
+  },
+  "pushed": false,
+  "selection": "affected",
+  "selection_totals": {
+    "dev-scope": {
+      "executed": 980,
+      "carried": 713
+    },
+    "ktester": {
+      "executed": 4816,
+      "carried": 6345
+    },
+    "ouedraogo": {
+      "executed": 2665,
+      "carried": 2962
+    }
+  },
+  "selection_control": {
+    "dev-scope": {
+      "executed": 45,
+      "carried": 0
+    },
+    "ktester": {
+      "executed": 159,
+      "carried": 0
+    },
+    "ouedraogo": {
+      "executed": 169,
+      "carried": 0
+    }
+  },
+  "execution": "batch",
+  "coverage_scope": "scope",
+  "ignored_settings": [
+    "survival.flaky_rerun",
+    "survival.environment_errors"
+  ],
+  "dev_unmapped_excluded": 0,
+  "notes": [
+    "Batch execution: scope-only coverage; all/other partitions unavailable; no coverage XML. Flaky and environment reruns are ignored for batch measurements."
+  ],
+  "dev_build_discovery": {
+    "command": [
+      "mvn",
+      "-o",
+      "test",
+      "-Dmaven.test.failure.ignore=true",
+      "-pl",
+      "logback-core",
+      "-am"
+    ],
+    "cwd": "/repo/experiments/commit-survival/work/checkouts/0",
+    "exit_code": 0,
+    "timeout": false,
+    "seconds": 14.857,
+    "log": "results/dev-build-test-phase.log",
+    "input_sha256": "c79f463b12a631f7fc6fb7bb6e09021818c3226016b200d5ff1d1c69bf7695f4",
+    "sha": "88abf59a18720854f4f55feb8d8f6951cfaf6037",
+    "complete": true,
+    "counts": {
+      "run": 526,
+      "failed": 0,
+      "skipped": 18,
+      "methods_run": 526,
+      "excluded": 39,
+      "unmapped": 4
+    },
+    "excluded_by_reason": {
+      "disabled": 21,
+      "not-reported-by-build": 9,
+      "exclude-pattern": 9
+    },
+    "inherited_methods_run": 14,
+    "unmapped_by_reason": {
+      "no-source-method": 4
+    },
+    "reason_basis": "Skipped reports and literal module Surefire configuration/source annotations; otherwise not-reported-by-build"
+  }
+}

@@ -1,0 +1,371 @@
+package ch.qos.logback.core.model.processor;
+
+import static org.junit.Assert.*;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Stack;
+
+import org.junit.Before;
+import org.junit.Test;
+
+/**
+ * Unit tests for {@link ModelInterpretationContext}. The tests use simple
+ * stub implementations of {@link Context}, {@link Model} and other required
+ * classes so that they do not depend on the full Logback runtime.
+ */
+public class ModelInterpretationContextTest {
+
+    /** Simple stub implementation of {@link Context}. */
+    private static class StubContext implements Context {
+
+        private final Map<String, String> props = new HashMap<>();
+
+        @Override
+        public String getProperty(String key) {
+            return props.get(key);
+        }
+
+        @Override
+        public void putProperty(String key, String value) {
+            props.put(key, value);
+        }
+
+        @Override
+        public Map<String, String> getCopyOfPropertyMap() {
+            return new HashMap<>(props);
+        }
+
+        // --- No‑op implementations for the rest of the Context API
+        @Override public StatusManager getStatusManager() { return null; }
+        @Override public Object getObject(String key) { return null; }
+        @Override public void putObject(String key, Object value) {}
+        @Override public String getName() { return null; }
+        @Override public void setName(String name) {}
+        @Override public long getBirthTime() { return 0L; }
+        @Override public Object getConfigurationLock() { return null; }
+        @Override public java.util.concurrent.ScheduledExecutorService getScheduledExecutorService() { return null; }
+        @Override public java.util.concurrent.ExecutorService getExecutorService() { return null; }
+        @Override public java.util.concurrent.ExecutorService getAlternateExecutorService() { return null; }
+        @Override public void register(LifeCycle component) {}
+        @Override public void addScheduledFuture(java.util.concurrent.ScheduledFuture<?> scheduledFuture) {}
+        @Override public SequenceNumberGenerator getSequenceNumberGenerator() { return null; }
+        @Override public void setSequenceNumberGenerator(SequenceNumberGenerator sequenceNumberGenerator) {}
+        @Override public void addConfigurationEventListener(ConfigurationEventListener listener) {}
+        @Override public void fireConfigurationEvent(ConfigurationEvent configurationEvent) {}
+    }
+
+    /** Minimal concrete subclass of {@link Model}. */
+    private static class DummyModel extends Model {
+        // No extra behaviour needed for the tests.
+    }
+
+    private StubContext stubContext;
+    private ModelInterpretationContext mic;
+
+    @Before
+    public void setUp() {
+        stubContext = new StubContext();
+        mic = new ModelInterpretationContext(stubContext);
+    }
+
+    // -----------------------------------------------------------------------
+    // Constructor and basic fields
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testCreateAppenderBags_initializesAppenders() {
+        // The constructor already called createAppenderBags()
+        Map<String, Object> objMap = mic.getObjectMap();
+        assertTrue(objMap.containsKey(JoranConstants.APPENDER_BAG));
+        assertTrue(objMap.containsKey(JoranConstants.APPENDER_REF_BAG));
+
+        assertTrue(objMap.get(JoranConstants.APPENDER_BAG) instanceof Map);
+        assertTrue(objMap.get(JoranConstants.APPENDER_REF_BAG) instanceof Map);
+    }
+
+    @Test
+    public void testCopyConstructorCopiesMapsAndRegistry() {
+        // set up original mic
+        mic.addSubstitutionProperty("key1", "value1");
+        mic.addImport("List", "java.util.List");
+        mic.getDefaultNestedComponentRegistry().add(String.class, "prop", Integer.class);
+
+        // copy
+        ModelInterpretationContext copy = new ModelInterpretationContext(mic);
+
+        // verify maps are deep‑copied
+        assertEquals("value1", copy.getProperty("key1"));
+        assertEquals("java.util.List", copy.getImport("List"));
+
+        // verify registry duplication
+        String found = copy.getDefaultNestedComponentRegistry()
+                .findDefaultComponentTypeByTag("prop");
+        // The stub registry does not actually store tags, but the call should not
+        // throw and should return null (the same behaviour as the original).
+        assertNull(found);
+    }
+
+    @Test
+    public void testTopModelGetterSetter() {
+        DummyModel model = new DummyModel();
+        mic.setTopModel(model);
+        assertSame(model, mic.getTopModel());
+    }
+
+    // -----------------------------------------------------------------------
+    // Model stack operations
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testModelStackPushPeekPop() {
+        DummyModel m1 = new DummyModel();
+        DummyModel m2 = new DummyModel();
+
+        assertTrue(mic.isModelStackEmpty());
+
+        mic.pushModel(m1);
+        assertFalse(mic.isModelStackEmpty());
+        assertSame(m1, mic.peekModel());
+
+        mic.pushModel(m2);
+        assertSame(m2, mic.peekModel());
+
+        assertSame(m2, mic.popModel());
+        assertSame(m1, mic.peekModel());
+
+        assertSame(m1, mic.popModel());
+        assertTrue(mic.isModelStackEmpty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Object stack operations
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testObjectStackPushPeekPopAndGet() {
+        String obj1 = "first";
+        Integer obj2 = 42;
+
+        assertTrue(mic.isObjectStackEmpty());
+
+        mic.pushObject(obj1);
+        assertFalse(mic.isObjectStackEmpty());
+        assertSame(obj1, mic.peekObject());
+
+        mic.pushObject(obj2);
+        assertSame(obj2, mic.peekObject());
+
+        assertSame(obj2, mic.popObject());
+        assertSame(obj1, mic.peekObject());
+
+        assertSame(obj1, mic.getObject(0));
+    }
+
+    // -----------------------------------------------------------------------
+    // Configurator hint
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testConfiguratorHintGetterSetter() {
+        Object hint = new Object();
+        mic.setConfiguratorHint(hint);
+        assertSame(hint, mic.getConfiguratorHint());
+    }
+
+    // -----------------------------------------------------------------------
+    // BeanDescriptionCache accessor
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testBeanDescriptionCacheIsCreated() {
+        assertNotNull(mic.getBeanDescriptionCache());
+    }
+
+    // -----------------------------------------------------------------------
+    // Property substitution (subst)
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testSubst_nullInputReturnsNull() {
+        assertNull(mic.subst(null));
+    }
+
+    @Test
+    public void testSubst_usesPropertiesMapAndContext() {
+        // property defined in MIC's own map
+        mic.addSubstitutionProperty("micKey", "micValue");
+        // property defined only in the context
+        stubContext.putProperty("ctxKey", "ctxValue");
+
+        String result1 = mic.subst("${micKey}");
+        String result2 = mic.subst("${ctxKey}");
+        String result3 = mic.subst("plain");
+
+        assertEquals("micValue", result1);
+        assertEquals("ctxValue", result2);
+        assertEquals("plain", result3);
+    }
+
+    // -----------------------------------------------------------------------
+    // Substitution properties handling
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testAddSubstitutionProperty_nullKeyOrValueIgnored() {
+        mic.addSubstitutionProperty(null, "value");
+        mic.addSubstitutionProperty("key", null);
+        assertTrue(mic.getCopyOfPropertyMap().isEmpty());
+    }
+
+    @Test
+    public void testAddSubstitutionProperty_trimsAndOverwrites() {
+        mic.addSubstitutionProperty("key", "  value  ");
+        assertEquals("value", mic.getProperty("key"));
+
+        mic.addSubstitutionProperty("key", "new");
+        assertEquals("new", mic.getProperty("key"));
+    }
+
+    @Test
+    public void testAddSubstitutionProperties_bulkAdd() {
+        Properties props = new Properties();
+        props.setProperty("a", "1");
+        props.setProperty("b", " 2 "); // should be trimmed
+
+        mic.addSubstitutionProperties(props);
+        Map<String, String> copy = mic.getCopyOfPropertyMap();
+
+        assertEquals(2, copy.size());
+        assertEquals("1", copy.get("a"));
+        assertEquals("2", copy.get("b"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Imports handling
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testAddImport_andGetImport() {
+        mic.addImport("List", "java.util.List");
+        assertEquals("java.util.List", mic.getImport("List"));
+        assertEquals("Unknown", mic.getImport("Unknown"));
+        assertNull(mic.getImport(null));
+    }
+
+    @Test
+    public void testGetImportMapCopyIsIndependent() {
+        mic.addImport("Map", "java.util.Map");
+        Map<String, String> copy = mic.getImportMapCopy();
+        assertEquals("java.util.Map", copy.get("Map"));
+
+        // modify copy should not affect the original
+        copy.put("Map", "changed");
+        assertEquals("java.util.Map", mic.getImport("Map"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Dependency handling
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testAddAndRetrieveDependencyDefinitions() {
+        DummyModel depender = new DummyModel();
+        DependencyDefinition dd = new DependencyDefinition(depender, "dependee1");
+
+        mic.addDependencyDefinition(dd);
+
+        // unmodifiable list should contain the definition
+        assertEquals(1, mic.getDependencyDefinitions().size());
+        assertSame(dd, mic.getDependencyDefinitions().get(0));
+
+        // getDependeeNamesForModel should return the correct name
+        assertEquals(Collections.singletonList("dependee1"),
+                mic.getDependeeNamesForModel(depender));
+
+        // hasDependers true for the added name
+        assertTrue(mic.hasDependers("dependee1"));
+    }
+
+    @Test
+    public void testHasDependers_invalidInputReturnsFalse() {
+        // The method creates an IllegalArgumentException but does not throw it.
+        assertFalse(mic.hasDependers(null));
+        assertFalse(mic.hasDependers(""));
+        assertFalse(mic.hasDependers("   "));
+    }
+
+    @Test
+    public void testMarkAndCheckNamedDependeeStarted() {
+        mic.markStartOfNamedDependee("myDep");
+        assertTrue(mic.isNamedDependeeStarted("myDep"));
+        assertFalse(mic.isNamedDependeeStarted("other"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Property lookup priority (MIC vs Context)
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testGetProperty_prefersMicPropertiesOverContext() {
+        // set same key in both places
+        mic.addSubstitutionProperty("shared", "mic");
+        stubContext.putProperty("shared", "ctx");
+
+        assertEquals("mic", mic.getProperty("shared"));
+    }
+
+    @Test
+    public void testGetProperty_fallsBackToContext() {
+        stubContext.putProperty("onlyCtx", "value");
+        assertEquals("value", mic.getProperty("onlyCtx"));
+    }
+
+    // -----------------------------------------------------------------------
+    // getCopyOfPropertyMap returns a defensive copy
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testGetCopyOfPropertyMapIsDefensive() {
+        mic.addSubstitutionProperty("k", "v");
+        Map<String, String> copy = mic.getCopyOfPropertyMap();
+        copy.put("k", "changed");
+        assertEquals("v", mic.getProperty("k"));
+    }
+
+    // -----------------------------------------------------------------------
+    // DefaultNestedComponentRegistry duplication verification
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testDefaultNestedComponentRegistryDuplication() {
+        // Register a component in the original MIC
+        mic.getDefaultNestedComponentRegistry()
+                .add(String.class, "myProp", Integer.class);
+
+        // Copy MIC
+        ModelInterpretationContext copy = new ModelInterpretationContext(mic);
+
+        // The duplicate should not affect the original; we just verify that
+        // calling duplicate does not throw and that the copy has its own
+        // registry instance.
+        assertNotSame(mic.getDefaultNestedComponentRegistry(),
+                copy.getDefaultNestedComponentRegistry());
+    }
+
+    // -----------------------------------------------------------------------
+    // Stack accessor methods
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testGetObjectStack_returnsInternalStackReference() {
+        Stack<Object> stack = mic.getObjectStack();
+        assertSame(stack, mic.getObjectStack());
+
+        // manipulate via reference and verify MIC sees the change
+        stack.push("ref");
+        assertEquals("ref", mic.peekObject());
+    }
+}

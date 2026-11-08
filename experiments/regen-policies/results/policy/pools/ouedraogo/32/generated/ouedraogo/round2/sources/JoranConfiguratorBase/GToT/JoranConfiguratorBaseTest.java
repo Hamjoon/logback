@@ -1,0 +1,203 @@
+/**
+ * JUnit 4 test suite for {@link ch.qos.logback.core.joran.JoranConfiguratorBase}.
+ *
+ * The tests cover:
+ * 1. Public API of the class (getInterpretationContext, buildModelInterpretationContext).
+ * 2. Edge‑case behaviour (calling methods before the configurator is fully initialised,
+ *    passing null arguments, repeated invocations).
+ * 3. The protected helper methods {@code sanityCheck} and {@code performCheck}
+ *    exercised through a concrete test subclass.
+ *
+ * The test class creates a minimal concrete subclass of the abstract
+ * {@code JoranConfiguratorBase} so that the protected methods can be exercised
+ * without using any external mocking framework – only the classes and methods
+ * that appear in the supplied source code or in the listed dependency signatures
+ * are used.
+ */
+
+package ch.qos.logback.core.joran;
+import ch.qos.logback.core.joran.event.SaxEvent;
+
+
+import static org.junit.Assert.*;
+
+import org.junit.Before;
+import org.junit.Test;
+
+import ch.qos.logback.core.joran.sanity.AppenderWithinAppenderSanityChecker;
+import ch.qos.logback.core.joran.spi.RuleStore;
+import ch.qos.logback.core.joran.spi.SaxEventInterpreter;
+import ch.qos.logback.core.model.Model;
+import ch.qos.logback.core.joran.spi.SaxEventInterpretationContext;
+import ch.qos.logback.core.joran.spi.SaxEvent;
+import ch.qos.logback.core.joran.spi.ElementPath;
+import ch.qos.logback.core.joran.action.*;
+import ch.qos.logback.core.joran.conditional.*;
+import ch.qos.logback.core.joran.sanity.SanityChecker;
+import ch.qos.logback.core.spi.ContextAware;
+
+/**
+ * Minimal concrete implementation of {@link JoranConfiguratorBase}.
+ * It does not add any extra behaviour – it simply inherits the implementation
+ * from the abstract base class.  In addition, it exposes the protected
+ * {@code sanityCheck} and {@code performCheck} methods as public wrappers so
+ * that they can be invoked from the test cases.
+ *
+ * @param <E> the type parameter required by the base class (not used in the tests)
+ */
+class TestJoranConfigurator<E> extends JoranConfiguratorBase<E> {
+
+    /** expose {@code sanityCheck} for testing */
+    public void publicSanityCheck(Model model) {
+        super.sanityCheck(model);
+    }
+
+    /** expose {@code performCheck} for testing */
+    public void publicPerformCheck(SanityChecker sc, Model model) {
+        super.performCheck(sc, model);
+    }
+
+    // The abstract methods are already implemented in the base class, so no
+    // further overrides are necessary.
+}
+
+/**
+ * Test suite.
+ */
+public class JoranConfiguratorBaseTest {
+
+    private TestJoranConfigurator<Object> configurator;
+
+    @Before
+    public void setUp() {
+        configurator = new TestJoranConfigurator<>();
+    }
+
+    /* -------------------------------------------------------------
+     *  1. Public methods declared in JoranConfiguratorBase
+     * ------------------------------------------------------------- */
+
+    /**
+     * The {@code getInterpretationContext()} method should throw a
+     * {@link NullPointerException} if it is called before the internal
+     * {@code SaxEventInterpreter} has been created (which is done by
+     * {@code buildModelInterpretationContext()}).
+     */
+    @Test(expected = NullPointerException.class)
+    public void getInterpretationContext_beforeBuild_throwsNPE() {
+        // Direct call without prior initialisation
+        configurator.getInterpretationContext();
+    }
+
+    /**
+     * After {@code buildModelInterpretationContext()} has been executed,
+     * {@code getInterpretationContext()} must return a non‑null instance.
+     */
+    @Test
+    public void getInterpretationContext_afterBuild_returnsNonNull() {
+        configurator.buildModelInterpretationContext();
+        SaxEventInterpretationContext ctx = configurator.getInterpretationContext();
+        assertNotNull("Interpretation context should be created", ctx);
+    }
+
+    /**
+     * Verify that {@code buildModelInterpretationContext()} can be invoked
+     * without throwing any exception.
+     */
+    @Test
+    public void buildModelInterpretationContext_executesWithoutException() {
+        configurator.buildModelInterpretationContext(); // first call
+        // second call – the method should be idempotent (no exception)
+        configurator.buildModelInterpretationContext();
+    }
+
+    /* -------------------------------------------------------------
+     *  2. Protected helper methods exercised through the test subclass
+     * ------------------------------------------------------------- */
+
+    /**
+     * The {@code sanityCheck(Model)} method internally creates an
+     * {@link AppenderWithinAppenderSanityChecker} and delegates the check to it.
+     * For a freshly created {@link Model} the checker must not throw any
+     * exception.
+     */
+    @Test
+    public void sanityCheck_withValidModel_completes() {
+        configurator.buildModelInterpretationContext(); // initialise context
+        Model model = new Model();                     // empty model
+        configurator.publicSanityCheck(model);         // should not fail
+    }
+
+    /**
+     * Passing {@code null} to {@code sanityCheck} must result in a
+     * {@link NullPointerException}.  The method does not guard against a
+     * null argument – this is an intentional edge case to verify defensive
+     * programming.
+     */
+    @Test(expected = NullPointerException.class)
+    public void sanityCheck_withNullModel_throwsNPE() {
+        configurator.publicSanityCheck(null);
+    }
+
+    /**
+     * Directly exercising {@code performCheck} with a custom {@link SanityChecker}
+     * implementation allows us to verify the {@code ContextAware} handling.
+     * The {@link AppenderWithinAppenderSanityChecker} implements both
+     * {@code SanityChecker} and {@code ContextAware}; the configurator should
+     * set the current context (which may be {@code null}) before invoking
+     * {@code check(Model)}.
+     */
+    @Test
+    public void performCheck_withAppenderWithinAppenderSanityChecker_executes() {
+        configurator.buildModelInterpretationContext(); // initialise context
+        Model model = new Model();
+        SanityChecker checker = new AppenderWithinAppenderSanityChecker();
+
+        // The call should succeed without throwing any exception.
+        configurator.publicPerformCheck(checker, model);
+    }
+
+    /**
+     * When {@code performCheck} receives a {@link SanityChecker} that does
+     * *not* implement {@code ContextAware}, the configurator must simply invoke
+     * {@code check(Model)} without attempting to set a context.
+     */
+    @Test
+    public void performCheck_withNonContextAwareChecker_executes() {
+        configurator.buildModelInterpretationContext(); // initialise context
+        Model model = new Model();
+
+        // Minimal {@code SanityChecker} implementation that does nothing.
+        SanityChecker dummyChecker = new SanityChecker() {
+            @Override
+            public void check(Model m) {
+                // no‑op
+            }
+        };
+
+        configurator.publicPerformCheck(dummyChecker, model);
+    }
+
+    /* -------------------------------------------------------------
+     *  3. Verification of rule registration (indirectly)
+     * ------------------------------------------------------------- */
+
+    /**
+     * The base class registers a number of element‑selector/action associations
+     * in {@code addElementSelectorAndActionAssociations(RuleStore)}.
+     * This test creates a fresh {@link RuleStore} implementation (the
+     * {@code DefaultRuleStore} class is part of the public Logback API but is
+     * not listed among the allowed types).  To stay within the constraints we
+     * therefore verify the *effect* of the registration by checking that the
+     * method executes without throwing an exception – the actual rule matching
+     * logic is exercised elsewhere in Logback's own test suite.
+     */
+    @Test
+    public void addElementSelectorAndActionAssociations_executesWithoutException() {
+        // The configurator creates its own RuleStore internally when it builds
+        // the SAX interpreter, so simply invoking the public initialisation
+        // path is sufficient.
+        configurator.buildModelInterpretationContext();
+        // No assertion – the test passes if no exception is thrown.
+    }
+}

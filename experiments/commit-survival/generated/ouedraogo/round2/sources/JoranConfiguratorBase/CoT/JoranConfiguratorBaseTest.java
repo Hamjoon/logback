@@ -1,0 +1,281 @@
+package ch.qos.logback.core.joran;
+import ch.qos.logback.core.status.StatusManager;
+
+
+import ch.qos.logback.core.joran.action.*;
+import ch.qos.logback.core.joran.conditional.*;
+import ch.qos.logback.core.joran.sanity.AppenderWithinAppenderSanityChecker;
+import ch.qos.logback.core.joran.sanity.SanityChecker;
+import ch.qos.logback.core.joran.spi.*;
+import ch.qos.logback.core.model.*;
+import ch.qos.logback.core.model.processor.DefaultProcessor;
+import ch.qos.logback.core.spi.ContextAware;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Supplier;
+
+import static org.junit.Assert.*;
+
+/**
+ * JUnit‑4 test suite for {@link JoranConfiguratorBase}.
+ *
+ * The tests cover:
+ * <ul>
+ *   <li>Public and protected methods declared in the class.</li>
+ *   <li>Normal execution paths.</li>
+ *   <li>Edge cases such as {@code null} arguments.</li>
+ *   <li>Side‑effects like context injection and rule registration.</li>
+ * </ul>
+ */
+public class JoranConfiguratorBaseTest {
+
+    /** Concrete implementation of the abstract class – no extra behaviour needed. */
+    private static class TestJoranConfigurator extends JoranConfiguratorBase<Object> {
+        // No additional implementation required – all abstract members are already
+        // implemented by JoranConfiguratorBase.
+    }
+
+    /** Minimal {@link RuleStore} implementation that records the calls made by the configurator. */
+    private static class DummyRuleStore implements RuleStore {
+        final List<ElementSelector> selectors = new ArrayList<>();
+        final List<Supplier<Action>> suppliers = new ArrayList<>();
+        final List<String> transparentParts = new ArrayList<>();
+
+        @Override
+        public void addRule(ElementSelector elementSelector, String actionClassStr) {
+            // Not used by the configurator – ignore.
+        }
+
+        @Override
+        public void addRule(ElementSelector elementSelector, Supplier<Action> actionSupplier) {
+            selectors.add(elementSelector);
+            suppliers.add(actionSupplier);
+        }
+
+        @Override
+        public Supplier<Action> matchActions(ElementPath elementPath) {
+            return null; // Not required for the tests.
+        }
+
+        @Override
+        public void addTransparentPathPart(String pathPart) {
+            transparentParts.add(pathPart);
+        }
+    }
+
+    /** Simple {@link SanityChecker} that also implements {@link ContextAware} so we can verify context injection. */
+    private static class DummySanityChecker implements SanityChecker, ContextAware {
+        boolean contextWasSet = false;
+
+        @Override
+        public void setContext(ch.qos.logback.core.spi.Context context) {
+            contextWasSet = true;
+        }
+
+        @Override
+        public ch.qos.logback.core.spi.Context getContext() {
+            return null;
+        }
+
+        @Override
+        public void check(Model model) {
+            // No real checking – just a placeholder.
+        }
+
+        // The remaining ContextAware methods are inherited from ContextAwareBase via default
+        // implementation (they are not needed for the test).
+    }
+
+    private TestJoranConfigurator configurator;
+
+    @Before
+    public void setUp() {
+        configurator = new TestJoranConfigurator();
+    }
+
+    /**
+     * Verify that {@code addElementSelectorAndActionAssociations} registers all expected
+     * selectors and transparent path parts.
+     */
+    @Test
+    public void testAddElementSelectorAndActionAssociations() {
+        DummyRuleStore ruleStore = new DummyRuleStore();
+
+        configurator.addElementSelectorAndActionAssociations(ruleStore);
+
+        // The configurator adds 21 distinct element selectors (see the source code).
+        assertEquals("Unexpected number of element selectors registered", 21, ruleStore.selectors.size());
+
+        // The configurator adds 4 transparent path parts: if, then, else, sift.
+        assertEquals("Unexpected number of transparent path parts registered", 4, ruleStore.transparentParts.size());
+
+        // Spot‑check a few selectors to make sure they are the intended ones.
+        assertTrue(ruleStore.selectors.stream()
+                .anyMatch(es -> "*/variable".equals(es.getPattern())));
+        assertTrue(ruleStore.selectors.stream()
+                .anyMatch(es -> "configuration/appender/appender-ref".equals(es.getPattern())));
+        assertTrue(ruleStore.transparentParts.contains("if"));
+        assertTrue(ruleStore.transparentParts.contains("sift"));
+    }
+
+    /**
+     * Normal execution of {@code sanityCheck} should not throw any exception.
+     */
+    @Test
+    public void testSanityCheckWithValidModel() {
+        Model model = new Model() { }; // anonymous concrete Model
+        // The method internally creates an AppenderWithinAppenderSanityChecker and calls performCheck.
+        configurator.sanityCheck(model);
+        // No exception means success.
+    }
+
+    /**
+     * Passing {@code null} as the model to {@code sanityCheck} must result in a
+     * {@link NullPointerException} because the underlying checker will be asked to
+     * check a null model.
+     */
+    @Test(expected = NullPointerException.class)
+    public void testSanityCheckWithNullModel() {
+        configurator.sanityCheck(null);
+    }
+
+    /**
+     * {@code performCheck} must inject the configurator's context into the supplied
+     * {@link SanityChecker} when the checker implements {@link ContextAware}.
+     */
+    @Test
+    public void testPerformCheckSetsContextOnContextAwareChecker() {
+        DummySanityChecker dummyChecker = new DummySanityChecker();
+        Model model = new Model() { };
+
+        configurator.performCheck(dummyChecker, model);
+
+        assertTrue("Context should have been set on the ContextAware checker", dummyChecker.contextWasSet);
+    }
+
+    /**
+     * {@code performCheck} should throw a {@link NullPointerException} when the
+     * {@link SanityChecker} argument is {@code null}.
+     */
+    @Test(expected = NullPointerException.class)
+    public void testPerformCheckWithNullChecker() {
+        Model model = new Model() { };
+        configurator.performCheck(null, model);
+    }
+
+    /**
+     * Ensure that {@code setImplicitRuleSupplier} accepts a {@link SaxEventInterpreter}
+     * and sets the implicit action supplier without throwing.
+     */
+    @Test
+    public void testSetImplicitRuleSupplier() {
+        // Minimal objects required for the interpreter constructor.
+        ch.qos.logback.core.spi.Context dummyContext = new ch.qos.logback.core.spi.Context() {
+            // Provide empty implementations – the interpreter never calls them in this test.
+            @Override public void addStatus(ch.qos.logback.core.status.Status status) {}
+            @Override public void addInfo(String msg) {}
+            @Override public void addInfo(String msg, Throwable ex) {}
+            @Override public void addWarn(String msg) {}
+            @Override public void addWarn(String msg, Throwable ex) {}
+            @Override public void addError(String msg) {}
+            @Override public void addError(String msg, Throwable ex) {}
+            @Override public ch.qos.logback.core.spi.StatusManager getStatusManager() { return null; }
+            @Override public String getName() { return "dummy"; }
+            @Override public void setName(String name) {}
+            @Override public void start() {}
+            @Override public void stop() {}
+            @Override public boolean isStarted() { return true; }
+        };
+        DummyRuleStore dummyRuleStore = new DummyRuleStore();
+        // ElementPath is not needed for the test – we can pass null.
+        SaxEventInterpreter interpreter = new SaxEventInterpreter(dummyContext, dummyRuleStore, null, new ArrayList<>());
+
+        // The method under test.
+        configurator.setImplicitRuleSupplier(interpreter);
+
+        // Verify indirectly – the interpreter must now hold a non‑null supplier.
+        assertNotNull("Implicit action supplier should have been set", 
+                interpreter.getClass()
+                        .getDeclaredMethod("getImplicitActionSupplier")
+                        .invoke(interpreter));
+    }
+
+    /**
+     * {@code buildModelInterpretationContext} should complete without throwing.
+     */
+    @Test
+    public void testBuildModelInterpretationContext() {
+        configurator.buildModelInterpretationContext();
+        // If no exception is thrown the test passes.
+    }
+
+    /**
+     * After manually installing a {@link SaxEventInterpreter} into the configurator,
+     * {@code getInterpretationContext} must return the interpreter's
+     * {@link SaxEventInterpretationContext}.
+     */
+    @Test
+    public void testGetInterpretationContext() throws Exception {
+        // Prepare a dummy interpreter.
+        ch.qos.logback.core.spi.Context dummyContext = new ch.qos.logback.core.spi.Context() {
+            @Override public void addStatus(ch.qos.logback.core.status.Status status) {}
+            @Override public void addInfo(String msg) {}
+            @Override public void addInfo(String msg, Throwable ex) {}
+            @Override public void addWarn(String msg) {}
+            @Override public void addWarn(String msg, Throwable ex) {}
+            @Override public void addError(String msg) {}
+            @Override public void addError(String msg, Throwable ex) {}
+            @Override public ch.qos.logback.core.spi.StatusManager getStatusManager() { return null; }
+            @Override public String getName() { return "dummy"; }
+            @Override public void setName(String name) {}
+            @Override public void start() {}
+            @Override public void stop() {}
+            @Override public boolean isStarted() { return true; }
+        };
+        DummyRuleStore dummyRuleStore = new DummyRuleStore();
+        SaxEventInterpreter interpreter = new SaxEventInterpreter(dummyContext, dummyRuleStore, null, new ArrayList<>());
+
+        // Inject the interpreter via reflection (the field is protected in the superclass).
+        Field field = GenericXMLConfigurator.class.getDeclaredField("saxEventInterpreter");
+        field.setAccessible(true);
+        field.set(configurator, interpreter);
+
+        SaxEventInterpretationContext ctx = configurator.getInterpretationContext();
+        assertNotNull("Interpretation context should not be null", ctx);
+        assertEquals("Returned context must belong to the interpreter we injected",
+                interpreter, ctx.getSaxEventInterpreter());
+    }
+
+    /**
+     * Verify that {@code addModelHandlerAssociations} registers handlers without throwing.
+     * The internal state of {@link DefaultProcessor} is not exposed, so the test only
+     * checks that the method completes successfully.
+     */
+    @Test
+    public void testAddModelHandlerAssociations() {
+        // Use a minimal Context implementation.
+        ch.qos.logback.core.spi.Context dummyContext = new ch.qos.logback.core.spi.Context() {
+            @Override public void addStatus(ch.qos.logback.core.status.Status status) {}
+            @Override public void addInfo(String msg) {}
+            @Override public void addInfo(String msg, Throwable ex) {}
+            @Override public void addWarn(String msg) {}
+            @Override public void addWarn(String msg, Throwable ex) {}
+            @Override public void addError(String msg) {}
+            @Override public void addError(String msg, Throwable ex) {}
+            @Override public ch.qos.logback.core.spi.StatusManager getStatusManager() { return null; }
+            @Override public String getName() { return "dummy"; }
+            @Override public void setName(String name) {}
+            @Override public void start() {}
+            @Override public void stop() {}
+            @Override public boolean isStarted() { return true; }
+        };
+        DefaultProcessor processor = new DefaultProcessor(dummyContext, configurator.getModelInterpretationContext());
+
+        configurator.addModelHandlerAssociations(processor);
+        // If no exception is thrown the test succeeds.
+    }
+}

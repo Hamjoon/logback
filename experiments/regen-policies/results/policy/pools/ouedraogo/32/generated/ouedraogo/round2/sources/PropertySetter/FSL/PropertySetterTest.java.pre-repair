@@ -1,0 +1,219 @@
+package ch.qos.logback.core.joran.util;
+
+import static org.junit.Assert.*;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.junit.Before;
+import org.junit.Test;
+
+import ch.qos.logback.core.Context;
+import ch.qos.logback.core.joran.spi.DefaultNestedComponentRegistry;
+import ch.qos.logback.core.joran.util.beans.BeanDescriptionCache;
+import ch.qos.logback.core.util.AggregationType;
+
+/**
+ * Unit tests for {@link PropertySetter}.
+ *
+ * The tests use a simple POJO ( {@link SampleBean} ) that contains
+ * <ul>
+ *   <li>basic properties (String, int, boolean) with standard setters</li>
+ *   <li>a collection adder method {@code addItem(String)}</li>
+ *   <li>a complex property adder {@code addChild(Child)}</li>
+ *   <li>a complex property setter {@code setChild(Child)}</li>
+ * </ul>
+ *
+ * A small subclass of {@link PropertySetter} is used to capture
+ * {@code addWarn}/{@code addError} messages without needing a full Logback
+ * {@link Context} implementation.
+ */
+public class PropertySetterTest {
+
+    /** Simple bean used throughout the tests. */
+    public static class SampleBean {
+        private String name;
+        private int age;
+        private boolean active;
+        private final List<String> items = new ArrayList<>();
+        private Child child;
+
+        public void setName(String name) { this.name = name; }
+        public void setAge(int age) { this.age = age; }
+        public void setActive(boolean active) { this.active = active; }
+
+        public void addItem(String item) { items.add(item); }
+        public List<String> getItems() { return items; }
+
+        public void addChild(Child child) { this.child = child; }
+        public void setChild(Child child) { this.child = child; }
+        public Child getChild() { return child; }
+
+        // getters for assertions
+        public String getName() { return name; }
+        public int getAge() { return age; }
+        public boolean isActive() { return active; }
+    }
+
+    /** Simple complex property used for adder / setter tests. */
+    public static class Child {
+        private final String data;
+        public Child(String data) { this.data = data; }
+        public String getData() { return data; }
+    }
+
+    /**
+     * Subclass of {@link PropertySetter} that records warning / error messages.
+     * This avoids the need for a real {@link Context} implementation.
+     */
+    public static class TestablePropertySetter extends PropertySetter {
+        public final List<String> warnings = new ArrayList<>();
+        public final List<String> errors   = new ArrayList<>();
+
+        public TestablePropertySetter(BeanDescriptionCache cache, Object obj) {
+            super(cache, obj);
+        }
+
+        @Override
+        public void addWarn(String msg) {
+            warnings.add(msg);
+        }
+
+        @Override
+        public void addWarn(String msg, Throwable ex) {
+            warnings.add(msg + " : " + ex.getMessage());
+        }
+
+        @Override
+        public void addError(String msg) {
+            errors.add(msg);
+        }
+
+        @Override
+        public void addError(String msg, Throwable ex) {
+            errors.add(msg + " : " + ex.getMessage());
+        }
+    }
+
+    private BeanDescriptionCache beanDescriptionCache;
+    private SampleBean bean;
+    private TestablePropertySetter setter;
+
+    @Before
+    public void setUp() {
+        // The BeanDescriptionCache only needs a Context for construction.
+        // Passing {@code null} is safe for the purpose of these unit tests
+        // because the cache does not use the context when reflecting on a class.
+        beanDescriptionCache = new BeanDescriptionCache((Context) null);
+        bean = new SampleBean();
+        setter = new TestablePropertySetter(beanDescriptionCache, bean);
+    }
+
+    @Test
+    public void testSetPropertyBasicTypes() {
+        setter.setProperty("name", "John Doe");
+        setter.setProperty("age", "42");
+        setter.setProperty("active", "true");
+
+        assertEquals("John Doe", bean.getName());
+        assertEquals(42, bean.getAge());
+        assertTrue(bean.isActive());
+    }
+
+    @Test
+    public void testSetPropertyUnknownPropertyProducesWarning() {
+        setter.setProperty("nonExisting", "value");
+        assertEquals(1, setter.warnings.size());
+        assertTrue(setter.warnings.get(0).contains("No setter for property [nonExisting]"));
+    }
+
+    @Test
+    public void testAddBasicPropertyUsesAdderMethod() {
+        // The adder method is {@code addItem(String)}.
+        // The method name expected by {@code addBasicProperty} is the capitalised
+        // form of the property name, therefore we pass "item".
+        setter.addBasicProperty("item", "firstItem");
+
+        List<String> items = bean.getItems();
+        assertEquals(1, items.size());
+        assertEquals("firstItem", items.get(0));
+    }
+
+    @Test
+    public void testAddBasicPropertyWhenAdderIsMissingLogsError() {
+        // There is no {@code addFoo(String)} method.
+        setter.addBasicProperty("foo", "bar");
+        assertEquals(1, setter.errors.size());
+        assertTrue(setter.errors.get(0).contains("No adder for property [Foo]"));
+    }
+
+    @Test
+    public void testAddComplexProperty() {
+        Child child = new Child("payload");
+        // The adder method is {@code addChild(Child)} – we pass the capitalised name.
+        setter.addComplexProperty("Child", child);
+        assertSame(child, bean.getChild());
+    }
+
+    @Test
+    public void testAddComplexPropertyWithWrongParameterTypeLogsError() {
+        // Trying to add a String to {@code addChild(Child)} should trigger a type‑mismatch error.
+        setter.addComplexProperty("Child", "notAChild");
+        assertEquals(2, setter.errors.size()); // one for type mismatch, one for class‑loader info
+        assertTrue(setter.errors.get(0).contains("is not assignable"));
+    }
+
+    @Test
+    public void testSetComplexProperty() {
+        Child child = new Child("setterPayload");
+        // The setter method is {@code setChild(Child)}.
+        setter.setComplexProperty("child", child);
+        assertSame(child, bean.getChild());
+    }
+
+    @Test
+    public void testSetComplexPropertyWhenSetterIsMissingLogsWarn() {
+        setter.setComplexProperty("missing", new Object());
+        assertEquals(1, setter.warnings.size());
+        assertTrue(setter.warnings.get(0).contains("Not setter method for property [missing]"));
+    }
+
+    @Test
+    public void testComputeAggregationTypeReturnsNonNull() {
+        // For a known property the assessor should return a concrete AggregationType.
+        AggregationType type = setter.computeAggregationType("name");
+        assertNotNull(type);
+    }
+
+    @Test
+    public void testGetClassNameViaImplicitRulesReturnsNullWhenNoRuleIsRegistered() {
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+        Class<?> result = setter.getClassNameViaImplicitRules(
+                "unknownTag",
+                AggregationType.NOT_FOUND,
+                registry);
+        assertNull(result);
+    }
+
+    @Test
+    public void testSetPropertyIgnoresNullValue() throws Exception {
+        // Directly invoke the private setProperty(Method, String) via reflection
+        // with a null value – the public API already guards against null,
+        // but the private helper must also survive a null conversion result.
+        Method setterMethod = SampleBean.class.getMethod("setName", String.class);
+        // Use reflection to access the private method.
+        java.lang.reflect.Method privateSetProp = PropertySetter.class
+                .getDeclaredMethod("setProperty", Method.class, String.class);
+        privateSetProp.setAccessible(true);
+
+        // Passing a null string should cause a PropertySetterException because
+        // the conversion returns null.
+        try {
+            privateSetProp.invoke(setter, setterMethod, (String) null);
+            fail("Expected PropertySetterException");
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            assertTrue(e.getCause() instanceof PropertySetterException);
+        }
+    }
+}

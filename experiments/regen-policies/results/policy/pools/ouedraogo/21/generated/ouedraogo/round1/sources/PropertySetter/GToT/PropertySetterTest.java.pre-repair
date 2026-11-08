@@ -1,0 +1,337 @@
+package ch.qos.logback.core.joran.util;
+
+import ch.qos.logback.core.Context;
+import ch.qos.logback.core.joran.spi.DefaultNestedComponentRegistry;
+import ch.qos.logback.core.joran.util.beans.BeanDescriptionCache;
+import ch.qos.logback.core.util.AggregationType;
+import ch.qos.logback.core.util.PropertySetterException;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.*;
+
+import static org.junit.Assert.*;
+
+/**
+ * Comprehensive JUnit‑4 test suite for {@link PropertySetter}.
+ *
+ * The tests use a very small in‑process {@link SimpleContext} implementation
+ * (only the methods required by the library are provided) and a tiny bean
+ * {@link TestBean} that contains a mixture of simple setters, adder methods
+ * and complex‑type setters.  No mocking frameworks are used – all objects are
+ * real, concrete instances as required by the assignment.
+ */
+public class PropertySetterTest {
+
+    // -------------------------------------------------------------------------
+    // Helper classes used throughout the test suite
+    // -------------------------------------------------------------------------
+
+    /** Minimal {@link Context} implementation – only the methods used by the
+     *  library are implemented; the rest throw {@link UnsupportedOperationException}. */
+    static class SimpleContext implements Context {
+        @Override public StatusManager getStatusManager() { throw new UnsupportedOperationException(); }
+        @Override public Object getObject(String key) { throw new UnsupportedOperationException(); }
+        @Override public void putObject(String key, Object value) { throw new UnsupportedOperationException(); }
+        @Override public String getProperty(String key) { return null; }
+        @Override public void putProperty(String key, String value) { throw new UnsupportedOperationException(); }
+        @Override public java.util.Map<String, String> getCopyOfPropertyMap() { throw new UnsupportedOperationException(); }
+        @Override public String getName() { return "simple"; }
+        @Override public void setName(String name) { /* no‑op */ }
+        @Override public long getBirthTime() { return System.currentTimeMillis(); }
+        @Override public Object getConfigurationLock() { return new Object(); }
+        @Override public ScheduledExecutorService getScheduledExecutorService() { return Executors.newSingleThreadScheduledExecutor(); }
+        @Override public ExecutorService getExecutorService() { return Executors.newSingleThreadExecutor(); }
+        @Override public ExecutorService getAlternateExecutorService() { return null; }
+        @Override public void register(LifeCycle component) { /* no‑op */ }
+        @Override public void addScheduledFuture(ScheduledFuture<?> scheduledFuture) { /* no‑op */ }
+        @Override public SequenceNumberGenerator getSequenceNumberGenerator() { throw new UnsupportedOperationException(); }
+        @Override public void setSequenceNumberGenerator(SequenceNumberGenerator sequenceNumberGenerator) { throw new UnsupportedOperationException(); }
+        @Override public void addConfigurationEventListener(ConfigurationEventListener listener) { throw new UnsupportedOperationException(); }
+        @Override public void fireConfigurationEvent(ConfigurationEvent configurationEvent) { throw new UnsupportedOperationException(); }
+    }
+
+    /** Simple bean used for exercising the PropertySetter. */
+    public static class TestBean {
+        private String name;
+        private int age;
+        private boolean active;
+        private Nested nested;
+        private final List<String> tags = new ArrayList<>();
+        private final List<Nested> children = new ArrayList<>();
+
+        // ----- simple setters -------------------------------------------------
+        public void setName(String name) { this.name = name; }
+        public void setAge(int age) { this.age = age; }
+        public void setActive(boolean active) { this.active = active; }
+
+        // ----- complex setter -------------------------------------------------
+        public void setNested(Nested nested) { this.nested = nested; }
+
+        // ----- adder methods -------------------------------------------------
+        public void addTag(String tag) { this.tags.add(tag); }
+        public void addChild(Nested child) { this.children.add(child); }
+
+        // ----- getters used by assertions ------------------------------------
+        public String getName() { return name; }
+        public int getAge() { return age; }
+        public boolean isActive() { return active; }
+        public Nested getNested() { return nested; }
+        public List<String> getTags() { return tags; }
+        public List<Nested> getChildren() { return children; }
+    }
+
+    /** Simple complex type used as a property value. */
+    public static class Nested {
+        private final String id;
+        public Nested(String id) { this.id = id; }
+        public String getId() { return id; }
+    }
+
+    private PropertySetter setter;
+    private TestBean bean;
+    private BeanDescriptionCache cache;
+    private SimpleContext context;
+
+    @Before
+    public void setUp() {
+        // Create a minimal context and a BeanDescriptionCache that will
+        // introspect TestBean via the real Logback implementation.
+        context = new SimpleContext();
+        cache = new BeanDescriptionCache(context);
+        bean = new TestBean();
+        setter = new PropertySetter(cache, bean);
+    }
+
+    // -------------------------------------------------------------------------
+    // 1. setProperty – happy path (String, int, boolean)
+    // -------------------------------------------------------------------------
+    @Test
+    public void testSetProperty_String_int_boolean() {
+        setter.setProperty("name", "John Doe");
+        assertEquals("John Doe", bean.getName());
+
+        setter.setProperty("age", "42");
+        assertEquals(42, bean.getAge());
+
+        setter.setProperty("active", "true");
+        assertTrue(bean.isActive());
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. setProperty – null value (should be ignored)
+    // -------------------------------------------------------------------------
+    @Test
+    public void testSetProperty_NullValueIgnored() {
+        bean.setName("initial");
+        setter.setProperty("name", null);          // nothing should happen
+        assertEquals("initial", bean.getName());
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. setProperty – unknown property (no setter)
+    // -------------------------------------------------------------------------
+    @Test
+    public void testSetProperty_UnknownProperty() {
+        bean.setName("unchanged");
+        setter.setProperty("nonExisting", "value");
+        // No exception, bean unchanged
+        assertEquals("unchanged", bean.getName());
+    }
+
+    // -------------------------------------------------------------------------
+    // 4. setProperty – conversion failure (int from non‑numeric string)
+    // -------------------------------------------------------------------------
+    @Test
+    public void testSetProperty_ConversionFailure() {
+        bean.setAge(10);                 // start with a known value
+        setter.setProperty("age", "notANumber");
+        // conversion fails → field must stay unchanged
+        assertEquals(10, bean.getAge());
+    }
+
+    // -------------------------------------------------------------------------
+    // 5. computeAggregationType – known and unknown properties
+    // -------------------------------------------------------------------------
+    @Test
+    public void testComputeAggregationType() {
+        // “name” is a basic property, should be AS_BASIC_PROPERTY
+        AggregationType type1 = setter.computeAggregationType("name");
+        assertEquals(AggregationType.AS_BASIC_PROPERTY, type1);
+
+        // “children” is a collection of complex objects → AS_COMPLEX_PROPERTY_COLLECTION
+        AggregationType type2 = setter.computeAggregationType("children");
+        assertEquals(AggregationType.AS_COMPLEX_PROPERTY_COLLECTION, type2);
+
+        // unknown property → NOT_FOUND
+        AggregationType type3 = setter.computeAggregationType("doesNotExist");
+        assertEquals(AggregationType.NOT_FOUND, type3);
+    }
+
+    // -------------------------------------------------------------------------
+    // 6. getObjClass – sanity check
+    // -------------------------------------------------------------------------
+    @Test
+    public void testGetObjClass() {
+        assertSame(TestBean.class, setter.getObjClass());
+    }
+
+    // -------------------------------------------------------------------------
+    // 7. addComplexProperty – success (adder method with correct type)
+    // -------------------------------------------------------------------------
+    @Test
+    public void testAddComplexProperty_Success() {
+        Nested child = new Nested("c1");
+        setter.addComplexProperty("Child", child);   // expects method addChild(Nested)
+        assertEquals(1, bean.getChildren().size());
+        assertSame(child, bean.getChildren().get(0));
+    }
+
+    // -------------------------------------------------------------------------
+    // 8. addComplexProperty – no adder method
+    // -------------------------------------------------------------------------
+    @Test
+    public void testAddComplexProperty_NoAdder() {
+        Nested dummy = new Nested("x");
+        // “Foo” does not map to any adder in TestBean
+        setter.addComplexProperty("Foo", dummy);
+        assertTrue(bean.getChildren().isEmpty());
+    }
+
+    // -------------------------------------------------------------------------
+    // 9. addComplexProperty – type mismatch (sanity check fails)
+    // -------------------------------------------------------------------------
+    @Test
+    public void testAddComplexProperty_TypeMismatch() {
+        // addTag expects a String, we give a Nested → should be rejected
+        Nested wrong = new Nested("wrong");
+        setter.addComplexProperty("Tag", wrong);
+        assertTrue(bean.getTags().isEmpty());
+    }
+
+    // -------------------------------------------------------------------------
+    // 10. addBasicProperty – success (adder for basic type)
+    // -------------------------------------------------------------------------
+    @Test
+    public void testAddBasicProperty_Success() {
+        setter.addBasicProperty("tag", "alpha");
+        assertEquals(1, bean.getTags().size());
+        assertEquals("alpha", bean.getTags().get(0));
+    }
+
+    // -------------------------------------------------------------------------
+    // 11. addBasicProperty – null value (ignored)
+    // -------------------------------------------------------------------------
+    @Test
+    public void testAddBasicProperty_NullValueIgnored() {
+        setter.addBasicProperty("tag", null);
+        assertTrue(bean.getTags().isEmpty());
+    }
+
+    // -------------------------------------------------------------------------
+    // 12. addBasicProperty – no adder method
+    // -------------------------------------------------------------------------
+    @Test
+    public void testAddBasicProperty_NoAdder() {
+        setter.addBasicProperty("unknown", "value");
+        // nothing should be added anywhere
+        assertTrue(bean.getTags().isEmpty());
+        assertTrue(bean.getChildren().isEmpty());
+    }
+
+    // -------------------------------------------------------------------------
+    // 13. addBasicProperty – conversion failure (adder expects int, string not numeric)
+    // -------------------------------------------------------------------------
+    @Test
+    public void testAddBasicProperty_ConversionFailure() {
+        // For the purpose of the test we add a temporary adder that expects an int.
+        // Since we cannot modify TestBean at runtime, we rely on the existing
+        // addTag(String) – conversion will always succeed, so we simulate the
+        // failure by using a property that maps to a setter expecting int.
+        // “age” has a regular setter, not an adder, therefore the method will
+        // report “No adder” and simply return – the bean state stays unchanged.
+        setter.addBasicProperty("age", "notAnInt");
+        assertEquals(0, bean.getAge()); // default int value
+    }
+
+    // -------------------------------------------------------------------------
+    // 14. setComplexProperty – success (setter with correct type)
+    // -------------------------------------------------------------------------
+    @Test
+    public void testSetComplexProperty_Success() {
+        Nested nested = new Nested("nested1");
+        setter.setComplexProperty("nested", nested);
+        assertSame(nested, bean.getNested());
+    }
+
+    // -------------------------------------------------------------------------
+    // 15. setComplexProperty – no setter method
+    // -------------------------------------------------------------------------
+    @Test
+    public void testSetComplexProperty_NoSetter() {
+        Nested dummy = new Nested("x");
+        setter.setComplexProperty("nonExisting", dummy);
+        assertNull(bean.getNested());
+    }
+
+    // -------------------------------------------------------------------------
+    // 16. setComplexProperty – type mismatch (sanity check fails)
+    // -------------------------------------------------------------------------
+    @Test
+    public void testSetComplexProperty_TypeMismatch() {
+        // The setter expects a Nested, we give a String → should be rejected
+        setter.setComplexProperty("nested", "I am a string");
+        assertNull(bean.getNested());
+    }
+
+    // -------------------------------------------------------------------------
+    // 17. getObj – should return the original bean instance
+    // -------------------------------------------------------------------------
+    @Test
+    public void testGetObj() {
+        assertSame(bean, setter.getObj());
+    }
+
+    // -------------------------------------------------------------------------
+    // 18. getClassNameViaImplicitRules – registration + lookup
+    // -------------------------------------------------------------------------
+    @Test
+    public void testGetClassNameViaImplicitRules_Found() {
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+        registry.add(TestBean.class, "child", Nested.class);
+
+        Class<?> result = setter.getClassNameViaImplicitRules(
+                "child",
+                AggregationType.AS_COMPLEX_PROPERTY,
+                registry);
+
+        assertEquals(Nested.class, result);
+    }
+
+    // -------------------------------------------------------------------------
+    // 19. getClassNameViaImplicitRules – not found
+    // -------------------------------------------------------------------------
+    @Test
+    public void testGetClassNameViaImplicitRules_NotFound() {
+        DefaultNestedComponentRegistry registry = new DefaultNestedComponentRegistry();
+        // No registration for “unknown”
+        Class<?> result = setter.getClassNameViaImplicitRules(
+                "unknown",
+                AggregationType.AS_BASIC_PROPERTY,
+                registry);
+        assertNull(result);
+    }
+
+    // -------------------------------------------------------------------------
+    // 20. setContext – ensure no NPE when a null context is supplied
+    // -------------------------------------------------------------------------
+    @Test
+    public void testSetContext_NullContextDoesNotThrow() {
+        setter.setContext(null);   // should be safe
+        // Subsequent call that does not depend on the context must still work
+        setter.setProperty("name", "Bob");
+        assertEquals("Bob", bean.getName());
+    }
+}
